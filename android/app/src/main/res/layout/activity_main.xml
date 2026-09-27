@@ -4,7 +4,7 @@
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
         <TextView android:id="@+id/title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-            android:text="LPSM FILMES & SÉRIES" android:textColor="@color/text" android:textStyle="bold" android:textSize="26sp" />
+            android:text="LPSM FILMES &amp; SÉRIES" android:textColor="@color/text" android:textStyle="bold" android:textSize="26sp" />
         <Button android:id="@+id/moviesTab" android:layout_width="150dp" android:layout_height="54dp" android:text="FILMES" android:focusable="true" />
         <Button android:id="@+id/seriesTab" android:layout_width="150dp" android:layout_height="54dp" android:text="SÉRIES" android:focusable="true" />
         <Button android:id="@+id/settingsBtn" android:layout_width="150dp" android:layout_height="54dp" android:text="CONFIG" android:focusable="true" />

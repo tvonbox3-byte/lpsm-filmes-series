@@ -3,7 +3,7 @@
     android:gravity="center" android:background="@color/bg" android:padding="48dp">
     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Configuração da fonte"
         android:textColor="@color/text" android:textSize="28sp" android:textStyle="bold" android:layout_marginBottom="24dp" />
-    <EditText android:id="@+id/url" android:layout_width="match_parent" android:layout_height="64dp" android:hint="URL M3U/Xtream (get.php?...username=...&password=...)"
+    <EditText android:id="@+id/url" android:layout_width="match_parent" android:layout_height="64dp" android:hint="URL M3U/Xtream (get.php?...username=...&amp;password=...)"
         android:textColor="@color/text" android:textColorHint="@color/muted" android:singleLine="true" />
     <Button android:id="@+id/save" android:layout_width="240dp" android:layout_height="60dp" android:text="SALVAR E TESTAR" android:layout_marginTop="20dp" />
     <TextView android:id="@+id/msg" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/muted" android:gravity="center" android:layout_marginTop="16dp" />

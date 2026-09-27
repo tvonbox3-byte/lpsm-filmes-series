@@ -5,7 +5,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="LPSM Filmes & Séries"
+        android:label="LPSM Filmes &amp; Séries"
         android:theme="@style/Theme.LPSMVod"
         android:usesCleartextTraffic="true">
         <activity android:name=".PlayerActivity" android:screenOrientation="landscape" />
