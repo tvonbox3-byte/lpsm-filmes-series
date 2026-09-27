@@ -1,0 +1,9 @@
+LPSM FILMES & SERIES - PRIMEIRO TESTE
+
+1. Envie TODO o conteúdo deste ZIP para o repositório lpsm-filmes-series.
+2. Commit direto na branch main.
+3. Abra Actions e aguarde "Gerar APK LPSM Filmes e Series".
+4. Baixe o Artifact LPSM-Filmes-Series.
+5. Na primeira abertura do app, cole a URL M3U/Xtream autorizada.
+
+Esta primeira versão foi feita separada do LPSM Player de TV ao vivo para testar o catálogo de Filmes/Séries com arquitetura correta: categorias e conteúdos são consultados separadamente, em vez de processar uma M3U enorme inteira.

@@ -1,0 +1,21 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:label="LPSM Filmes & Séries"
+        android:theme="@style/Theme.LPSMVod"
+        android:usesCleartextTraffic="true">
+        <activity android:name=".PlayerActivity" android:screenOrientation="landscape" />
+        <activity android:name=".SetupActivity" android:screenOrientation="landscape" />
+        <activity android:name=".MainActivity" android:screenOrientation="landscape" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
