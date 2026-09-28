@@ -188,7 +188,10 @@ const server = http.createServer(async (req, res) => {
         active: true,
         name: client.name || '',
         expiresAt: client.expiresAt || '',
-        sourceType: 'm3u'
+        sourceType: 'm3u',
+        // A box salva esta fonte localmente. Depois da primeira carga o catálogo
+        // não depende do painel/Render para abrir.
+        sourceUrl
       });
     }
 

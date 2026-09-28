@@ -198,13 +198,13 @@ function splitUrlAndHeaders(rawUrl, inheritedHeaders = {}) {
 
 async function parseM3u(url) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
+  const timeout = setTimeout(() => controller.abort(), 300_000);
   try {
     const response = await fetch(url, {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'user-agent': 'LPSM-VOD-Catalog/1.4.2',
+        'user-agent': 'LPSM-VOD-Catalog/1.5.0',
         'accept': 'application/x-mpegURL,text/plain,*/*'
       }
     });
