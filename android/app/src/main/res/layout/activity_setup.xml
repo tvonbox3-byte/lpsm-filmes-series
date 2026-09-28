@@ -1,10 +1,59 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
-    android:gravity="center" android:background="@color/bg" android:padding="48dp">
-    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Configuração da fonte"
-        android:textColor="@color/text" android:textSize="28sp" android:textStyle="bold" android:layout_marginBottom="24dp" />
-    <EditText android:id="@+id/url" android:layout_width="match_parent" android:layout_height="64dp" android:hint="URL M3U/Xtream (get.php?...username=...&amp;password=...)"
-        android:textColor="@color/text" android:textColorHint="@color/muted" android:singleLine="true" />
-    <Button android:id="@+id/save" android:layout_width="240dp" android:layout_height="60dp" android:text="SALVAR E TESTAR" android:layout_marginTop="20dp" />
-    <TextView android:id="@+id/msg" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/muted" android:gravity="center" android:layout_marginTop="16dp" />
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@color/bg"
+    android:padding="48dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ATIVAÇÃO LPSM FILMES &amp; SÉRIES"
+        android:textColor="@color/text"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="22dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Envie este código para ativação:"
+        android:textColor="@color/muted"
+        android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/deviceCode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="00:00:00:00:00:00"
+        android:textColor="@color/text"
+        android:textSize="34sp"
+        android:textStyle="bold"
+        android:fontFamily="monospace"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="26dp" />
+
+    <ProgressBar
+        android:id="@+id/progress"
+        android:layout_width="48dp"
+        android:layout_height="48dp" />
+
+    <TextView
+        android:id="@+id/msg"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Aguardando ativação no painel..."
+        android:textColor="@color/muted"
+        android:textSize="17sp"
+        android:gravity="center"
+        android:layout_marginTop="16dp" />
+
+    <Button
+        android:id="@+id/retry"
+        android:layout_width="220dp"
+        android:layout_height="58dp"
+        android:text="VERIFICAR AGORA"
+        android:focusable="true"
+        android:layout_marginTop="22dp" />
 </LinearLayout>

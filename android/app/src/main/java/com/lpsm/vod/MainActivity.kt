@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -11,6 +13,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.lpsm.vod.data.SourceConfig
+import com.lpsm.vod.data.DeviceApi
 import com.lpsm.vod.data.XtreamApi
 import com.lpsm.vod.databinding.ActivityMainBinding
 import com.lpsm.vod.model.*
@@ -28,20 +31,48 @@ class MainActivity: Activity() {
     private var modeSeries = false
     private var api: XtreamApi? = null
     private val pin = "0202"
+    private val heartbeatHandler = Handler(Looper.getMainLooper())
+    private val heartbeat = object : Runnable {
+        override fun run() {
+            pool.execute { DeviceApi.heartbeat(this@MainActivity) }
+            heartbeatHandler.postDelayed(this, 20000)
+        }
+    }
 
     override fun onCreate(s: Bundle?) { super.onCreate(s); b = ActivityMainBinding.inflate(layoutInflater); setContentView(b.root)
         b.categories.layoutManager = LinearLayoutManager(this); b.categories.adapter = cats
         b.grid.layoutManager = GridLayoutManager(this, if (resources.configuration.smallestScreenWidthDp >= 600) 6 else 4); b.grid.adapter = posters
         b.moviesTab.setOnClickListener { modeSeries = false; loadCategories() }
         b.seriesTab.setOnClickListener { modeSeries = true; loadCategories() }
+        b.settingsBtn.text = "ATIVAÇÃO"
         b.settingsBtn.setOnClickListener { startActivityForResult(Intent(this, SetupActivity::class.java), 9) }
         initSource()
+        UpdateManager.check(this)
+        heartbeatHandler.post(heartbeat)
     }
 
     private fun initSource() {
         val cfg = SourceConfig.load(this)
-        if (cfg == null) { startActivityForResult(Intent(this, SetupActivity::class.java), 9); return }
-        api = XtreamApi(cfg); loadCategories()
+        if (cfg == null) {
+            startActivityForResult(Intent(this, SetupActivity::class.java), 9)
+            return
+        }
+        api = XtreamApi(cfg)
+        loadCategories()
+
+        // Atualiza ativação/fonte em segundo plano sem impedir o catálogo em cache/local.
+        pool.execute {
+            try {
+                val result = DeviceApi.fetchActivation(this)
+                if (result.active && result.source != null) {
+                    SourceConfig.save(this, result.source)
+                    api = XtreamApi(result.source)
+                } else if (!result.active) {
+                    SourceConfig.clear(this)
+                    runOnUiThread { startActivityForResult(Intent(this, SetupActivity::class.java), 9) }
+                }
+            } catch (_: Exception) { }
+        }
     }
 
     private fun isAdult(name: String): Boolean {
@@ -100,5 +131,14 @@ class MainActivity: Activity() {
         AlertDialog.Builder(this).setTitle(name).setView(root).setNegativeButton("Fechar", null).show()
     }
 
-    override fun onActivityResult(r: Int, c: Int, d: Intent?) { super.onActivityResult(r,c,d); if (r == 9 && c == RESULT_OK) initSource() }
+    override fun onActivityResult(r: Int, c: Int, d: Intent?) {
+        super.onActivityResult(r,c,d)
+        if (r == 9 && c == RESULT_OK) initSource()
+    }
+
+    override fun onDestroy() {
+        heartbeatHandler.removeCallbacksAndMessages(null)
+        pool.shutdownNow()
+        super.onDestroy()
+    }
 }

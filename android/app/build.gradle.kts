@@ -11,11 +11,34 @@ android {
         applicationId = "com.lpsm.vod"
         minSdk = 21
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.1.0"
     }
 
     buildFeatures { viewBinding = true }
+
+    val ksPath = System.getenv("LPSM_VOD_KEYSTORE_PATH")
+    val ksPass = System.getenv("LPSM_VOD_KEYSTORE_PASSWORD")
+    val ksAlias = System.getenv("LPSM_VOD_KEY_ALIAS")
+    val keyPass = System.getenv("LPSM_VOD_KEY_PASSWORD")
+
+    signingConfigs {
+        if (!ksPath.isNullOrBlank() && !ksPass.isNullOrBlank() && !ksAlias.isNullOrBlank() && !keyPass.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(ksPath)
+                storePassword = ksPass
+                keyAlias = ksAlias
+                keyPassword = keyPass
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

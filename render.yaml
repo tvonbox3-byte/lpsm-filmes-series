@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: lpsm-filmes-series-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: TOKEN_SECRET
+        generateValue: true

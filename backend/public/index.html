@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LPSM Filmes & Séries — Painel</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <h1>LPSM Filmes & Séries</h1>
+        <p>Painel separado para ativação e fontes de filmes/séries.</p>
+      </div>
+      <button id="logout" class="ghost hidden">Sair</button>
+    </header>
+
+    <section id="loginCard" class="card login">
+      <h2>Entrar no painel</h2>
+      <input id="user" placeholder="Usuário" value="admin" />
+      <input id="pass" placeholder="Senha" type="password" />
+      <button id="login">Entrar</button>
+      <p id="loginMsg" class="msg"></p>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="grid2">
+        <section class="card">
+          <h2 id="formTitle">Cadastrar aparelho</h2>
+          <input id="clientId" type="hidden" />
+          <label>Nome do cliente/aparelho</label>
+          <input id="name" placeholder="Ex.: João - Sala" />
+          <label>Código / MAC mostrado no app</label>
+          <input id="mac" placeholder="AA:BB:CC:DD:EE:FF" />
+          <label>URL Xtream autorizada</label>
+          <textarea id="sourceUrl" rows="3" placeholder="http://servidor/get.php?username=...&password=...&type=m3u_plus"></textarea>
+          <label>Validade (opcional)</label>
+          <input id="expiresAt" type="datetime-local" />
+          <label class="check"><input id="enabled" type="checkbox" checked /> Ativo</label>
+          <div class="actions">
+            <button id="save">Salvar</button>
+            <button id="cancel" class="ghost hidden">Cancelar edição</button>
+          </div>
+          <p id="formMsg" class="msg"></p>
+        </section>
+
+        <section class="card summary">
+          <h2>Status</h2>
+          <div class="stats">
+            <div><strong id="total">0</strong><span>Aparelhos</span></div>
+            <div><strong id="online">0</strong><span>Online</span></div>
+            <div><strong id="active">0</strong><span>Ativos</span></div>
+          </div>
+          <p>O aplicativo consulta este painel pelo servidor. O cliente não precisa digitar usuário ou senha da fonte.</p>
+        </section>
+      </div>
+
+      <section class="card tableCard">
+        <div class="tableHead">
+          <h2>Aparelhos</h2>
+          <button id="refresh" class="ghost">Atualizar</button>
+        </div>
+        <div class="tableWrap">
+          <table>
+            <thead><tr><th>Status</th><th>Cliente</th><th>Código/MAC</th><th>Validade</th><th>Fonte</th><th>Ações</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

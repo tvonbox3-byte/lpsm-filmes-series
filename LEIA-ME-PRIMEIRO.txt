@@ -1,9 +1,13 @@
-LPSM FILMES & SERIES - PRIMEIRO TESTE
+LPSM FILMES & SERIES 1.1.0
 
-1. Envie TODO o conteúdo deste ZIP para o repositório lpsm-filmes-series.
-2. Commit direto na branch main.
-3. Abra Actions e aguarde "Gerar APK LPSM Filmes e Series".
-4. Baixe o Artifact LPSM-Filmes-Series.
-5. Na primeira abertura do app, cole a URL M3U/Xtream autorizada.
+1. Envie o CONTEUDO deste pacote para a raiz do repositorio lpsm-filmes-series.
+2. O GitHub Actions gera o APK.
+3. Publique o painel/backend no Render usando o render.yaml.
+4. No primeiro uso, o app mostra um codigo/MAC. Cadastre esse codigo no painel e informe a URL Xtream autorizada.
+5. O app recebe a fonte pelo servidor; o cliente nao digita usuario/senha.
 
-Esta primeira versão foi feita separada do LPSM Player de TV ao vivo para testar o catálogo de Filmes/Séries com arquitetura correta: categorias e conteúdos são consultados separadamente, em vez de processar uma M3U enorme inteira.
+ATUALIZACOES SEM BAIXAR APK MANUALMENTE:
+Para atualizar por cima da versao instalada, o APK precisa manter sempre a mesma assinatura.
+O primeiro APK 1.0.1 foi de teste/debug. Portanto, depois de configurar a assinatura estavel, sera necessario desinstalar o APK de teste e instalar a primeira versao assinada UMA UNICA VEZ. Depois disso, as novas versoes aparecem dentro do proprio app.
+
+NAO envie o arquivo de assinatura (.jks) para o GitHub publico.

@@ -2,26 +2,70 @@ package com.lpsm.vod
 
 import android.app.Activity
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.View
+import com.lpsm.vod.data.DeviceApi
 import com.lpsm.vod.data.SourceConfig
 import com.lpsm.vod.databinding.ActivitySetupBinding
 import java.util.concurrent.Executors
 
-class SetupActivity: Activity() {
+class SetupActivity : Activity() {
     private lateinit var b: ActivitySetupBinding
     private val pool = Executors.newSingleThreadExecutor()
-    override fun onCreate(s: Bundle?) { super.onCreate(s); b = ActivitySetupBinding.inflate(layoutInflater); setContentView(b.root)
-        b.save.setOnClickListener {
-            val cfg = SourceConfig.fromUrl(b.url.text.toString())
-            if (cfg == null) { b.msg.text = "URL inválida. Use uma URL com username e password."; return@setOnClickListener }
-            b.msg.text = "Testando..."
-            pool.execute {
-                try {
-                    val api = com.lpsm.vod.data.XtreamApi(cfg)
-                    api.movieCategories()
-                    SourceConfig.save(this, cfg)
-                    runOnUiThread { setResult(RESULT_OK); finish() }
-                } catch (e: Exception) { runOnUiThread { b.msg.text = "Não conectou: ${e.message ?: "erro"}" } }
+    private val handler = Handler(Looper.getMainLooper())
+    @Volatile private var checking = false
+
+    private val poll = object : Runnable {
+        override fun run() {
+            checkActivation()
+            handler.postDelayed(this, 5000)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        b = ActivitySetupBinding.inflate(layoutInflater)
+        setContentView(b.root)
+        b.deviceCode.text = DeviceApi.deviceCode(this)
+        b.retry.setOnClickListener { checkActivation() }
+        checkActivation()
+        handler.postDelayed(poll, 5000)
+    }
+
+    private fun checkActivation() {
+        if (checking) return
+        checking = true
+        b.progress.visibility = View.VISIBLE
+        b.msg.text = "Verificando ativação..."
+        pool.execute {
+            try {
+                DeviceApi.heartbeat(this)
+                val result = DeviceApi.fetchActivation(this)
+                runOnUiThread {
+                    b.progress.visibility = View.VISIBLE
+                    if (result.active && result.source != null) {
+                        SourceConfig.save(this, result.source)
+                        b.msg.text = "Ativado. Abrindo catálogo..."
+                        setResult(RESULT_OK)
+                        handler.postDelayed({ finish() }, 350)
+                    } else {
+                        b.msg.text = result.message
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    b.msg.text = "Servidor temporariamente indisponível. Tentaremos novamente automaticamente."
+                }
+            } finally {
+                checking = false
             }
         }
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        pool.shutdownNow()
+        super.onDestroy()
     }
 }
