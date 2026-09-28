@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-const CACHE_TTL_MS = 30 * 60 * 1000;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_ITEMS = Number(process.env.M3U_MAX_ITEMS || 250000);
 const cache = new Map();
 
@@ -25,30 +25,42 @@ function displayName(extinf, a) {
 function episodeInfo(name) {
   const n = norm(name);
   const patterns = [
-    /\bS(\d{1,3})\s*E(\d{1,4})\b/i,
-    /\b(\d{1,3})x(\d{1,4})\b/i,
-    /\bT(?:EMPORADA)?\s*(\d{1,3})\D+E(?:P(?:IS[ÓO]DIO)?)?\s*(\d{1,4})\b/i,
-    /\bTEMPORADA\s*(\d{1,3})\D+EPIS[ÓO]DIO\s*(\d{1,4})\b/i
+    /\bS\s*(\d{1,3})\s*[.\-_ ]*E\s*(\d{1,4})\b/i,
+    /\bT\s*(\d{1,3})\s*[.\-_ ]*E\s*(\d{1,4})\b/i,
+    /\b(\d{1,3})\s*x\s*(\d{1,4})\b/i,
+    /\b(?:TEMP(?:ORADA)?|SEASON)\s*(\d{1,3})\D+(?:EP(?:IS[ÓO]DIO|ISODE)?|E)\s*(\d{1,4})\b/i,
+    /\b(\d{1,3})\s*[ªº]?\s*TEMPORADA\D+(?:EP(?:IS[ÓO]DIO)?|E)\s*(\d{1,4})\b/i
   ];
   for (const p of patterns) {
     const m = n.match(p);
     if (m) return { season: Number(m[1]) || 1, episode: Number(m[2]) || 1, marker: m[0] };
   }
+  // Alguns provedores usam apenas EP 12. Nesse caso tratamos como temporada 1.
+  const onlyEpisode = n.match(/\b(?:EP(?:IS[ÓO]DIO|ISODE)?|E)\s*[.\-_ ]*(\d{1,4})\b/i);
+  if (onlyEpisode) return { season: 1, episode: Number(onlyEpisode[1]) || 1, marker: onlyEpisode[0] };
   return null;
 }
-
 function cleanSeriesName(name, ep) {
-  let value = norm(name);
-  if (ep?.marker) value = value.replace(ep.marker, ' ');
+  const original = norm(name);
+  if (!ep?.marker) return original;
+
+  const index = original.toLocaleLowerCase('pt-BR').indexOf(ep.marker.toLocaleLowerCase('pt-BR'));
+  // O padrão mais comum é: "Nome da Série S01E02 - Título do episódio".
+  // Usar apenas a parte anterior ao marcador evita criar uma série diferente para cada episódio.
+  if (index > 0) {
+    const before = original.slice(0, index).replace(/[\s._|:\-–—]+$/g, '').trim();
+    if (before.length >= 2) return before;
+  }
+
+  let value = original.replace(ep.marker, ' ');
   value = value
     .replace(/\b(?:TEMPORADA|SEASON)\s*\d{1,3}\b/ig, ' ')
     .replace(/\b(?:EPIS[ÓO]DIO|EPISODE|EP)\s*\d{1,4}\b/ig, ' ')
-    .replace(/[\s._-]+$/g, '')
+    .replace(/[\s._|:\-–—]+$/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
-  return value || norm(name);
+  return value || original;
 }
-
 function classify(url, group, name) {
   const u = lower(url);
   const g = lower(group);

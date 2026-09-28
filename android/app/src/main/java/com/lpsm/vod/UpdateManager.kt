@@ -5,6 +5,8 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -19,6 +21,7 @@ object UpdateManager {
     private const val UPDATE_JSON = "https://github.com/tvonbox3-byte/lpsm-filmes-series/releases/latest/download/update.json"
     private val pool = Executors.newSingleThreadExecutor()
     @Volatile private var checking = false
+    @Volatile private var offeredVersion = 0L
 
     data class Info(
         val versionCode: Long,
@@ -29,14 +32,22 @@ object UpdateManager {
     )
 
     fun check(activity: Activity) {
-        if (checking) return
+        checkNow(activity)
+        // Segunda tentativa depois da rede da TV Box estabilizar.
+        Handler(Looper.getMainLooper()).postDelayed({ checkNow(activity) }, 12000)
+    }
+
+    private fun checkNow(activity: Activity) {
+        if (checking || activity.isFinishing) return
         checking = true
         pool.execute {
             try {
                 val c = URL(UPDATE_JSON).openConnection() as HttpURLConnection
-                c.connectTimeout = 5000
-                c.readTimeout = 8000
-                c.setRequestProperty("User-Agent", "LPSM-VOD-Updater/1.1")
+                c.instanceFollowRedirects = true
+                c.connectTimeout = 8000
+                c.readTimeout = 12000
+                c.setRequestProperty("User-Agent", "LPSM-VOD-Updater/1.3")
+                c.setRequestProperty("Cache-Control", "no-cache")
                 val json = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
                 val info = Info(
                     json.optLong("versionCode"),
@@ -52,7 +63,8 @@ object UpdateManager {
                     @Suppress("DEPRECATION")
                     pkg.versionCode.toLong()
                 }
-                if (info.versionCode > installed && info.apkUrl.startsWith("https://")) {
+                if (info.versionCode > installed && info.versionCode > offeredVersion && info.apkUrl.startsWith("https://")) {
+                    offeredVersion = info.versionCode
                     activity.runOnUiThread { show(activity, info) }
                 }
             } catch (_: Exception) { }
@@ -82,9 +94,10 @@ object UpdateManager {
                 val dir = File(activity.cacheDir, "updates").apply { mkdirs() }
                 val apk = File(dir, "LPSM-Filmes-Series.apk")
                 val c = URL(info.apkUrl).openConnection() as HttpURLConnection
+                c.instanceFollowRedirects = true
                 c.connectTimeout = 10000
-                c.readTimeout = 60000
-                c.setRequestProperty("User-Agent", "LPSM-VOD-Updater/1.1")
+                c.readTimeout = 90000
+                c.setRequestProperty("User-Agent", "LPSM-VOD-Updater/1.3")
                 c.inputStream.use { input -> apk.outputStream().use { out -> input.copyTo(out) } }
 
                 if (info.sha256.isNotBlank()) {

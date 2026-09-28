@@ -9,6 +9,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.lpsm.vod.databinding.ActivityPlayerBinding
 import org.json.JSONObject
@@ -30,7 +31,7 @@ class PlayerActivity : Activity() {
         }
 
         val headers = linkedMapOf<String, String>()
-        headers["User-Agent"] = "LPSM-VOD/1.2.1 (Android)"
+        headers["User-Agent"] = "LPSM-VOD/1.3.0 (Android)"
         headers["Accept"] = "*/*"
 
         intent.getStringExtra("headers")?.takeIf { it.isNotBlank() }?.let { raw ->
@@ -54,8 +55,13 @@ class PlayerActivity : Activity() {
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
             .setDataSourceFactory(httpFactory)
 
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(15000, 60000, 1500, 3000)
+            .build()
+
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setLoadControl(loadControl)
             .build()
             .also { exo ->
                 b.playerView.player = exo

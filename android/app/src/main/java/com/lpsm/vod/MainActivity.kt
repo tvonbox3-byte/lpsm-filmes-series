@@ -8,26 +8,29 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
+import coil3.load
 import com.lpsm.vod.data.CatalogApi
 import com.lpsm.vod.data.DeviceApi
 import com.lpsm.vod.databinding.ActivityMainBinding
-import com.lpsm.vod.model.*
+import com.lpsm.vod.model.Category
+import com.lpsm.vod.model.PosterItem
 import com.lpsm.vod.ui.CategoryAdapter
 import com.lpsm.vod.ui.PosterAdapter
 import java.text.Normalizer
-import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.Executors
+import org.json.JSONObject
 
 class MainActivity: Activity() {
     private lateinit var b: ActivityMainBinding
-    private val pool = Executors.newFixedThreadPool(3)
+    private val pool = Executors.newFixedThreadPool(4)
     private val cats = CategoryAdapter { selectCategory(it) }
-    private val posters = PosterAdapter { openItem(it) }
+    private val posters = PosterAdapter(
+        onClick = { openItem(it) },
+        onFocus = { showHero(it) }
+    )
     private var modeSeries = false
     private lateinit var api: CatalogApi
     private val pin = "0202"
@@ -35,7 +38,7 @@ class MainActivity: Activity() {
     private val heartbeat = object : Runnable {
         override fun run() {
             pool.execute { DeviceApi.heartbeat(this@MainActivity) }
-            heartbeatHandler.postDelayed(this, 20000)
+            heartbeatHandler.postDelayed(this, 30000)
         }
     }
 
@@ -44,29 +47,55 @@ class MainActivity: Activity() {
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
         api = CatalogApi(this)
-        b.categories.layoutManager = LinearLayoutManager(this)
+
+        b.categories.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         b.categories.adapter = cats
-        b.grid.layoutManager = GridLayoutManager(this, if (resources.configuration.smallestScreenWidthDp >= 600) 6 else 4)
+
+        val columns = when {
+            resources.configuration.smallestScreenWidthDp >= 720 -> 7
+            resources.configuration.smallestScreenWidthDp >= 600 -> 6
+            else -> 4
+        }
+        b.grid.layoutManager = GridLayoutManager(this, columns)
         b.grid.adapter = posters
-        b.moviesTab.setOnClickListener { modeSeries = false; loadCategories() }
-        b.seriesTab.setOnClickListener { modeSeries = true; loadCategories() }
+        b.grid.setHasFixedSize(true)
+
+        b.moviesTab.setOnClickListener { switchMode(false) }
+        b.seriesTab.setOnClickListener { switchMode(true) }
         b.settingsBtn.text = "ATIVAÇÃO"
         b.settingsBtn.setOnClickListener { startActivityForResult(Intent(this, SetupActivity::class.java), 9) }
+
         verifyAndLoad()
         UpdateManager.check(this)
         heartbeatHandler.post(heartbeat)
     }
 
+    private fun switchMode(series: Boolean) {
+        if (modeSeries == series && (b.grid.adapter?.itemCount ?: 0) > 0) return
+        modeSeries = series
+        updateTabs()
+        loadCategories()
+    }
+
+    private fun updateTabs() {
+        b.moviesTab.isSelected = !modeSeries
+        b.seriesTab.isSelected = modeSeries
+        b.sectionTitle.text = if (modeSeries) "Séries" else "Filmes"
+    }
+
     private fun verifyAndLoad() {
         b.progress.visibility = View.VISIBLE
-        b.status.text = "Conectando ao painel..."
+        b.status.text = "Preparando seu catálogo..."
         pool.execute {
             try {
                 DeviceApi.heartbeat(this)
                 val result = DeviceApi.fetchActivation(this)
                 runOnUiThread {
                     if (result.active) {
+                        updateTabs()
                         loadCategories()
+                        // Deixa as primeiras categorias prontas no cache sem travar a tela.
+                        pool.execute { api.prefetchHome() }
                     } else {
                         b.progress.visibility = View.GONE
                         startActivityForResult(Intent(this, SetupActivity::class.java), 9)
@@ -75,14 +104,15 @@ class MainActivity: Activity() {
             } catch (_: Exception) {
                 runOnUiThread {
                     b.progress.visibility = View.GONE
-                    b.status.text = "Não foi possível conectar ao servidor. Tente novamente."
+                    b.status.text = "Sem conexão e ainda não há catálogo salvo neste aparelho."
                 }
             }
         }
     }
 
     private fun isAdult(name: String): Boolean {
-        val n = Normalizer.normalize(name.lowercase(Locale.ROOT), Normalizer.Form.NFD).replace("\\p{Mn}+".toRegex(), "")
+        val n = Normalizer.normalize(name.lowercase(Locale.ROOT), Normalizer.Form.NFD)
+            .replace("\\p{Mn}+".toRegex(), "")
         return listOf("adult", "xxx", "18+", "porno", "erotic").any { n.contains(it) }
     }
 
@@ -98,16 +128,19 @@ class MainActivity: Activity() {
 
     private fun loadCategories() {
         b.progress.visibility = View.VISIBLE
-        b.status.text = if (modeSeries) "Carregando categorias de séries..." else "Carregando categorias de filmes..."
+        b.status.text = if (modeSeries) "Carregando séries..." else "Carregando filmes..."
+        posters.submit(emptyList())
         pool.execute {
             try {
                 val (list, summary) = api.categories(modeSeries)
                 runOnUiThread {
                     b.progress.visibility = View.GONE
                     cats.submit(list)
-                    posters.submit(emptyList())
                     b.status.text = "$summary • ${list.size} categorias"
-                    if (list.isNotEmpty()) b.categories.requestFocus()
+                    if (list.isNotEmpty()) {
+                        cats.select(list.first())
+                        loadCategory(list.first(), focusGrid = false)
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -122,20 +155,34 @@ class MainActivity: Activity() {
     }
 
     private fun selectCategory(c: Category) {
-        if (isAdult(c.name)) askPin { loadCategory(c) } else loadCategory(c)
+        if (isAdult(c.name)) askPin { loadCategory(c, focusGrid = true) }
+        else loadCategory(c, focusGrid = true)
     }
 
-    private fun loadCategory(c: Category) {
+    private fun loadCategory(c: Category, focusGrid: Boolean) {
+        cats.select(c)
         b.progress.visibility = View.VISIBLE
-        b.status.text = "${c.name} — carregando..."
+        b.sectionTitle.text = c.name
+        b.status.text = "${c.name} • carregando..."
         pool.execute {
             try {
                 val list = api.items(modeSeries, c.id)
                 runOnUiThread {
                     b.progress.visibility = View.GONE
                     posters.submit(list)
-                    b.status.text = "${c.name} — ${list.size} títulos"
-                    if (list.isNotEmpty()) b.grid.requestFocus()
+                    b.status.text = "${c.name} • ${list.size} títulos"
+                    if (list.isNotEmpty()) {
+                        showHero(list.first())
+                        if (focusGrid) {
+                            b.grid.post {
+                                b.grid.scrollToPosition(0)
+                                b.grid.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus()
+                                    ?: b.grid.requestFocus()
+                            }
+                        }
+                    } else {
+                        clearHero()
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -146,58 +193,36 @@ class MainActivity: Activity() {
         }
     }
 
+    private fun showHero(item: PosterItem) {
+        b.heroTitle.text = item.name
+        b.heroMeta.text = if (item.isSeries) "SÉRIE • OK para abrir temporadas" else "FILME • OK para assistir"
+        b.heroPoster.load(item.image) { crossfade(true) }
+    }
+
+    private fun clearHero() {
+        b.heroTitle.text = if (modeSeries) "Séries" else "Filmes"
+        b.heroMeta.text = "Escolha uma categoria"
+        b.heroPoster.setImageDrawable(null)
+    }
+
     private fun openItem(item: PosterItem) {
         if (!item.isSeries) {
             val url = item.url ?: return
-            play(url, item.headers)
+            play(url, item.headers, item.name)
             return
         }
-        b.progress.visibility = View.VISIBLE
-        pool.execute {
-            try {
-                val seasons = api.seasons(item.id)
-                runOnUiThread {
-                    b.progress.visibility = View.GONE
-                    showSeasons(item.name, seasons)
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    b.progress.visibility = View.GONE
-                    b.status.text = "Erro na série: ${e.message}"
-                }
-            }
-        }
+        startActivity(
+            Intent(this, SeriesActivity::class.java)
+                .putExtra("seriesId", item.id)
+                .putExtra("name", item.name)
+                .putExtra("image", item.image)
+        )
     }
 
-    private fun showSeasons(name: String, seasons: List<Season>) {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24,16,24,16)
-        }
-        seasons.forEach { s ->
-            root.addView(TextView(this).apply {
-                text = "Temporada ${s.number}"
-                textSize = 20f
-                setPadding(8,14,8,8)
-            })
-            s.episodes.forEach { ep ->
-                root.addView(TextView(this).apply {
-                    text = ep.title
-                    textSize = 17f
-                    setPadding(16,12,16,12)
-                    isFocusable = true
-                    setOnClickListener {
-                        play(ep.url, ep.headers)
-                    }
-                })
-            }
-        }
-        AlertDialog.Builder(this).setTitle(name).setView(root).setNegativeButton("Fechar", null).show()
-    }
-
-    private fun play(url: String, headers: Map<String, String>) {
+    private fun play(url: String, headers: Map<String, String>, title: String) {
         val intent = Intent(this, PlayerActivity::class.java)
             .putExtra("url", url)
+            .putExtra("title", title)
             .putExtra("headers", JSONObject(headers).toString())
         startActivity(intent)
     }

@@ -1,7 +1,29 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"
-    android:background="@drawable/focus_bg" android:padding="5dp" android:focusable="true" android:layout_margin="6dp">
-    <ImageView android:id="@+id/poster" android:layout_width="match_parent" android:layout_height="230dp" android:scaleType="centerCrop" />
-    <TextView android:id="@+id/name" android:layout_width="match_parent" android:layout_height="54dp" android:maxLines="2"
-        android:ellipsize="end" android:textColor="@color/text" android:textSize="15sp" android:gravity="center_vertical" />
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/poster_card_bg"
+    android:padding="5dp"
+    android:focusable="true"
+    android:clickable="true"
+    android:layout_margin="5dp">
+
+    <ImageView
+        android:id="@+id/poster"
+        android:layout_width="match_parent"
+        android:layout_height="205dp"
+        android:scaleType="centerCrop"
+        android:background="@drawable/poster_placeholder" />
+
+    <TextView
+        android:id="@+id/name"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:textColor="@color/text"
+        android:textSize="14sp"
+        android:gravity="center_vertical"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp" />
 </LinearLayout>

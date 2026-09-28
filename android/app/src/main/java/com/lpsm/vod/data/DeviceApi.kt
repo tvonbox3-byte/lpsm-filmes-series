@@ -11,7 +11,8 @@ import java.security.MessageDigest
 object DeviceApi {
     private const val DEFAULT_BACKEND = "https://lpsm-filmes-series-backend.onrender.com"
     private const val REMOTE_BACKEND_FILE = "https://raw.githubusercontent.com/tvonbox3-byte/lpsm-filmes-series/main/backend-url.txt"
-    private const val CACHE_MS = 6 * 60 * 60 * 1000L
+    private const val CACHE_MS = 24 * 60 * 60 * 1000L
+    private const val ACTIVATION_FALLBACK_MS = 7L * 24L * 60L * 60L * 1000L
 
     data class Activation(
         val active: Boolean,
@@ -38,7 +39,7 @@ object DeviceApi {
             val c = URL(REMOTE_BACKEND_FILE).openConnection() as HttpURLConnection
             c.connectTimeout = 3000
             c.readTimeout = 3000
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.2")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.3")
             val text = c.inputStream.bufferedReader().use { it.readText().trim() }.trimEnd('/')
             if (text.startsWith("https://") || text.startsWith("http://")) text else null
         } catch (_: Exception) { null }
@@ -48,24 +49,53 @@ object DeviceApi {
         return result
     }
 
-    fun fetchActivation(context: Context): Activation {
-        val mac = deviceCode(context)
-        val url = "${backendUrl(context)}/api/device/config?mac=${URLEncoder.encode(mac, "UTF-8")}" 
-        val c = URL(url).openConnection() as HttpURLConnection
-        c.connectTimeout = 8000
-        c.readTimeout = 15000
-        c.setRequestProperty("Accept", "application/json")
-        c.setRequestProperty("User-Agent", "LPSM-VOD/1.2")
-
-        val body = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
-            ?.bufferedReader()?.use { it.readText() }.orEmpty()
-        val root = JSONObject(body.ifBlank { "{}" })
+    private fun cachedActivation(context: Context): Activation? {
+        val p = context.getSharedPreferences("activation", Context.MODE_PRIVATE)
+        val at = p.getLong("savedAt", 0L)
+        if (System.currentTimeMillis() - at > ACTIVATION_FALLBACK_MS) return null
+        if (!p.getBoolean("active", false)) return null
         return Activation(
-            active = root.optBoolean("active", false),
-            message = root.optString("message", if (root.optBoolean("active", false)) "Ativado" else "Aguardando ativação no painel."),
-            name = root.optString("name"),
-            expiresAt = root.optString("expiresAt")
+            active = true,
+            message = "Usando ativação salva",
+            name = p.getString("name", "") ?: "",
+            expiresAt = p.getString("expiresAt", "") ?: ""
         )
+    }
+
+    private fun saveActivation(context: Context, a: Activation) {
+        if (!a.active) return
+        context.getSharedPreferences("activation", Context.MODE_PRIVATE).edit()
+            .putBoolean("active", true)
+            .putString("name", a.name)
+            .putString("expiresAt", a.expiresAt)
+            .putLong("savedAt", System.currentTimeMillis())
+            .apply()
+    }
+
+    fun fetchActivation(context: Context): Activation {
+        try {
+            val mac = deviceCode(context)
+            val url = "${backendUrl(context)}/api/device/config?mac=${URLEncoder.encode(mac, "UTF-8")}" 
+            val c = URL(url).openConnection() as HttpURLConnection
+            c.connectTimeout = 6000
+            c.readTimeout = 12000
+            c.setRequestProperty("Accept", "application/json")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.3")
+
+            val body = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val root = JSONObject(body.ifBlank { "{}" })
+            val result = Activation(
+                active = root.optBoolean("active", false),
+                message = root.optString("message", if (root.optBoolean("active", false)) "Ativado" else "Aguardando ativação no painel."),
+                name = root.optString("name"),
+                expiresAt = root.optString("expiresAt")
+            )
+            saveActivation(context, result)
+            return result
+        } catch (e: Exception) {
+            return cachedActivation(context) ?: throw e
+        }
     }
 
     fun heartbeat(context: Context) {
@@ -74,10 +104,10 @@ object DeviceApi {
             val c = endpoint.openConnection() as HttpURLConnection
             c.requestMethod = "POST"
             c.doOutput = true
-            c.connectTimeout = 5000
-            c.readTimeout = 5000
+            c.connectTimeout = 4000
+            c.readTimeout = 4000
             c.setRequestProperty("Content-Type", "application/json")
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.2")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.3")
             val payload = JSONObject().put("mac", deviceCode(context)).toString().toByteArray()
             c.outputStream.use { it.write(payload) }
             (if (c.responseCode in 200..299) c.inputStream else c.errorStream)?.close()

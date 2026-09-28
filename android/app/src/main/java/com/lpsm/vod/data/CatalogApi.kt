@@ -7,28 +7,62 @@ import com.lpsm.vod.model.PosterItem
 import com.lpsm.vod.model.Season
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.security.MessageDigest
 
 class CatalogApi(private val context: Context) {
     private val mac get() = DeviceApi.deviceCode(context)
+    private val cacheDir by lazy { File(context.filesDir, "vod_catalog_cache").apply { mkdirs() } }
+    private val cacheTtlMs = 24L * 60L * 60L * 1000L
+
+    private fun cacheFile(path: String): File {
+        val key = MessageDigest.getInstance("SHA-256")
+            .digest(path.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        return File(cacheDir, "$key.json")
+    }
+
+    private fun readCache(path: String, allowStale: Boolean): JSONObject? {
+        val f = cacheFile(path)
+        if (!f.exists()) return null
+        if (!allowStale && System.currentTimeMillis() - f.lastModified() > cacheTtlMs) return null
+        return try { JSONObject(f.readText()) } catch (_: Exception) { null }
+    }
+
+    private fun writeCache(path: String, raw: String) {
+        try { cacheFile(path).writeText(raw) } catch (_: Exception) { }
+    }
 
     private fun get(path: String): JSONObject {
-        val url = URL("${DeviceApi.backendUrl(context)}$path")
-        val c = url.openConnection() as HttpURLConnection
-        c.connectTimeout = 10000
-        c.readTimeout = 60000
-        c.setRequestProperty("Accept", "application/json")
-        c.setRequestProperty("User-Agent", "LPSM-VOD/1.2.1")
-        val raw = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
-            ?.bufferedReader()?.use { it.readText() }.orEmpty()
-        val root = JSONObject(raw.ifBlank { "{}" })
-        if (!root.optBoolean("active", true)) {
-            throw IllegalStateException(root.optString("message", "Aparelho não ativado"))
+        readCache(path, allowStale = false)?.let { return it }
+
+        try {
+            val url = URL("${DeviceApi.backendUrl(context)}$path")
+            val c = url.openConnection() as HttpURLConnection
+            c.connectTimeout = 8000
+            c.readTimeout = 60000
+            c.setRequestProperty("Accept", "application/json")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.3")
+            val raw = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val root = JSONObject(raw.ifBlank { "{}" })
+            if (!root.optBoolean("active", true)) {
+                throw IllegalStateException(root.optString("message", "Aparelho não ativado"))
+            }
+            if (c.responseCode !in 200..299) {
+                throw IllegalStateException(root.optString("error", "Erro ${c.responseCode}"))
+            }
+            writeCache(path, raw)
+            return root
+        } catch (e: Exception) {
+            // Se o painel/servidor estiver indisponível, continua usando o último catálogo
+            // que já funcionou neste aparelho.
+            readCache(path, allowStale = true)?.let { return it }
+            throw e
         }
-        if (c.responseCode !in 200..299) throw IllegalStateException(root.optString("error", "Erro ${c.responseCode}"))
-        return root
     }
 
     private fun enc(v: String) = URLEncoder.encode(v, "UTF-8")
@@ -84,19 +118,33 @@ class CatalogApi(private val context: Context) {
         val seasons = root.optJSONArray("seasons") ?: JSONArray()
         return (0 until seasons.length()).map { i ->
             val s = seasons.getJSONObject(i)
+            val seasonNo = s.optInt("number", i + 1)
             val eps = s.optJSONArray("episodes") ?: JSONArray()
             Season(
-                number = s.optInt("number", i + 1),
+                number = seasonNo,
                 episodes = (0 until eps.length()).map { j ->
                     val e = eps.getJSONObject(j)
                     Episode(
                         id = e.optString("id"),
                         title = e.optString("title", "Episódio ${j + 1}"),
                         url = e.optString("url"),
-                        headers = headers(e.optJSONObject("headers"))
+                        headers = headers(e.optJSONObject("headers")),
+                        number = e.optInt("number", j + 1),
+                        season = seasonNo
                     )
-                }
+                }.sortedBy { it.number }
             )
-        }
+        }.sortedBy { it.number }
+    }
+
+    fun prefetchHome() {
+        try {
+            val movieCats = categories(false).first
+            movieCats.take(3).forEach { items(false, it.id) }
+        } catch (_: Exception) { }
+        try {
+            val seriesCats = categories(true).first
+            seriesCats.take(3).forEach { items(true, it.id) }
+        } catch (_: Exception) { }
     }
 }
