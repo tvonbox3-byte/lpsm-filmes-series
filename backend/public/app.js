@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 let token = sessionStorage.getItem('vodToken') || '';
-let state = { clients: [] };
+let state = { settings: { defaultSourceUrl: '' }, clients: [] };
 
 async function api(path, options = {}) {
   const r = await fetch(path, {
@@ -26,6 +26,20 @@ $('login').onclick = async () => {
 };
 $('logout').onclick = () => { token=''; sessionStorage.removeItem('vodToken'); showDashboard(false); };
 $('refresh').onclick = refresh;
+$('saveSource').onclick = async () => {
+  try {
+    const defaultSourceUrl = $('defaultSourceUrl').value.trim();
+    const r = await api('/api/admin/settings', { method:'PUT', body:JSON.stringify({ defaultSourceUrl }) });
+    state.settings = r.settings || { defaultSourceUrl };
+    $('sourceMsg').textContent = defaultSourceUrl ? 'Fonte principal salva. Os aparelhos sem fonte própria usarão esta lista.' : 'Fonte principal removida.';
+    await refresh();
+  } catch(e) { $('sourceMsg').textContent = e.message; }
+};
+$('clearSource').onclick = async () => {
+  if (!confirm('Remover a fonte principal?')) return;
+  $('defaultSourceUrl').value = '';
+  $('saveSource').click();
+};
 
 function escapeHtml(s='') { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmtDate(v) { if (!v) return 'Sem validade'; const d=new Date(v); return isNaN(d) ? v : d.toLocaleString('pt-BR'); }
@@ -34,6 +48,10 @@ function active(c) { return c.enabled !== false && (!c.expiresAt || new Date(c.e
 async function refresh() {
   try {
     state = await api('/api/admin/state');
+    const def = state.settings?.defaultSourceUrl || '';
+    $('defaultSourceUrl').value = def;
+    $('sourceBadge').textContent = def ? 'Configurada' : 'Não configurada';
+    $('sourceBadge').classList.toggle('ok', Boolean(def));
     $('total').textContent = state.clients.length;
     $('online').textContent = state.clients.filter(c => c.online).length;
     $('active').textContent = state.clients.filter(active).length;

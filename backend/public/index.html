@@ -25,6 +25,23 @@
     </section>
 
     <section id="dashboard" class="hidden">
+      <section class="card sourceCard">
+        <div class="tableHead">
+          <div>
+            <h2>Fonte principal de Filmes & Séries</h2>
+            <p class="hint">Cole aqui uma única URL Xtream autorizada. Todos os aparelhos ativados usam esta fonte automaticamente, exceto quando houver uma fonte específica no cadastro do aparelho.</p>
+          </div>
+          <span id="sourceBadge" class="badge">Não configurada</span>
+        </div>
+        <label>URL da lista / Xtream</label>
+        <textarea id="defaultSourceUrl" rows="3" placeholder="http://servidor/get.php?username=...&amp;password=...&amp;type=m3u_plus"></textarea>
+        <div class="actions">
+          <button id="saveSource">Salvar fonte principal</button>
+          <button id="clearSource" class="ghost">Remover fonte</button>
+        </div>
+        <p id="sourceMsg" class="msg"></p>
+      </section>
+
       <div class="grid2">
         <section class="card">
           <h2 id="formTitle">Cadastrar aparelho</h2>
@@ -52,7 +69,7 @@
             <div><strong id="online">0</strong><span>Online</span></div>
             <div><strong id="active">0</strong><span>Ativos</span></div>
           </div>
-          <p>O aplicativo consulta este painel pelo servidor. O cliente não precisa digitar usuário ou senha da fonte.</p>
+          <p>O aplicativo consulta este painel pelo servidor. O cliente não precisa digitar usuário ou senha da fonte. Se o aparelho não tiver uma fonte específica, ele recebe automaticamente a Fonte principal.</p>
         </section>
       </div>
 

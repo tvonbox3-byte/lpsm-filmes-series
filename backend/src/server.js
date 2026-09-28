@@ -89,7 +89,8 @@ const server = http.createServer(async (req, res) => {
       const client = store.data.clients.find(c => normMac(c.mac) === mac);
       if (!client) return json(res, 200, { active: false, message: 'Aguardando cadastro deste aparelho no painel.' });
       if (!isActive(client)) return json(res, 200, { active: false, message: client.enabled === false ? 'Aparelho pausado no painel.' : 'Ativação expirada.' });
-      const source = parseSource(client.sourceUrl);
+      const sourceUrl = String(client.sourceUrl || store.data.settings?.defaultSourceUrl || '').trim();
+      const source = parseSource(sourceUrl);
       if (!source) return json(res, 200, { active: false, message: 'Fonte ainda não configurada no painel.' });
       return json(res, 200, { active: true, name: client.name || '', expiresAt: client.expiresAt || '', source });
     }
@@ -106,7 +107,18 @@ const server = http.createServer(async (req, res) => {
       if (!admin(req)) return json(res, 401, { error: 'Não autorizado' });
 
       if (u.pathname === '/api/admin/state' && req.method === 'GET') {
-        return json(res, 200, { clients: store.data.clients.map(publicClient), audit: store.data.audit.slice(0, 30) });
+        return json(res, 200, { settings: store.data.settings || { defaultSourceUrl: '' }, clients: store.data.clients.map(publicClient), audit: store.data.audit.slice(0, 30) });
+      }
+
+      if (u.pathname === '/api/admin/settings' && req.method === 'PUT') {
+        const b = await body(req);
+        const defaultSourceUrl = String(b.defaultSourceUrl || '').trim();
+        if (defaultSourceUrl && !parseSource(defaultSourceUrl)) return json(res, 400, { error: 'URL Xtream inválida. Use uma URL com username e password.' });
+        await store.mutate(data => {
+          data.settings = { ...(data.settings || {}), defaultSourceUrl };
+          store.audit('settings.source', defaultSourceUrl ? 'Fonte principal atualizada' : 'Fonte principal removida');
+        });
+        return json(res, 200, { ok: true, settings: store.data.settings });
       }
 
       if (u.pathname === '/api/admin/clients' && req.method === 'POST') {

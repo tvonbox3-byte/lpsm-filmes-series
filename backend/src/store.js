@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const seed = { clients: [], audit: [] };
+const seed = { settings: { defaultSourceUrl: '' }, clients: [], audit: [] };
 
 export class Store {
   constructor(file) {
@@ -30,7 +30,7 @@ export class Store {
     if (!this.useSupabase) return this.loadLocal();
     const rows = await this.supabase('/rest/v1/lpsm_state?id=eq.vod&select=data', { method: 'GET' });
     if (Array.isArray(rows) && rows[0]?.data) {
-      this.data = { ...structuredClone(seed), ...rows[0].data };
+      this.data = { ...structuredClone(seed), ...rows[0].data, settings: { ...structuredClone(seed.settings), ...(rows[0].data?.settings || {}) } };
       return;
     }
     this.data = structuredClone(seed);
@@ -51,7 +51,7 @@ export class Store {
   }
 
   async loadLocal() {
-    try { this.data = { ...structuredClone(seed), ...JSON.parse(await readFile(this.file, 'utf8')) }; }
+    try { const saved = JSON.parse(await readFile(this.file, 'utf8')); this.data = { ...structuredClone(seed), ...saved, settings: { ...structuredClone(seed.settings), ...(saved?.settings || {}) } }; }
     catch (e) { if (e.code !== 'ENOENT') throw e; await this.saveLocal(); }
   }
 
