@@ -17,7 +17,10 @@ jobs:
       LPSM_VOD_KEYSTORE_PATH: ${{ github.workspace }}/lpsm-vod-release.jks
       LPSM_VOD_KEYSTORE_PASSWORD: ${{ secrets.LPSM_VOD_KEYSTORE_PASSWORD }}
       LPSM_VOD_KEY_ALIAS: ${{ secrets.LPSM_VOD_KEY_ALIAS }}
-      LPSM_VOD_KEY_PASSWORD: ${{ secrets.LPSM_VOD_KEY_PASSWORD }}
+
+      # Nesta keystore, a senha da chave privada é a mesma senha da keystore.
+      # Usar uma única fonte elimina erro de Secret divergente.
+      LPSM_VOD_KEY_PASSWORD: ${{ secrets.LPSM_VOD_KEYSTORE_PASSWORD }}
 
     steps:
       - name: Baixar projeto
@@ -34,26 +37,27 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Validar Secrets da assinatura
+      - name: Validar assinatura
         env:
           KEYSTORE_B64: ${{ secrets.LPSM_VOD_KEYSTORE_BASE64 }}
         shell: bash
         run: |
           set -e
+
           test -n "$KEYSTORE_B64"
           test -n "$LPSM_VOD_KEYSTORE_PASSWORD"
           test -n "$LPSM_VOD_KEY_ALIAS"
-          test -n "$LPSM_VOD_KEY_PASSWORD"
 
-          printf '%s' "$KEYSTORE_B64" | tr -d '\r\n\t ' | base64 --decode > "$LPSM_VOD_KEYSTORE_PATH"
+          printf '%s' "$KEYSTORE_B64"             | tr -d '\r\n\t '             | base64 --decode > "$LPSM_VOD_KEYSTORE_PATH"
 
           test -s "$LPSM_VOD_KEYSTORE_PATH"
 
           keytool -list             -keystore "$LPSM_VOD_KEYSTORE_PATH"             -storepass "$LPSM_VOD_KEYSTORE_PASSWORD"             -alias "$LPSM_VOD_KEY_ALIAS"
 
-          keytool -certreq             -alias "$LPSM_VOD_KEY_ALIAS"             -keystore "$LPSM_VOD_KEYSTORE_PATH"             -storepass "$LPSM_VOD_KEYSTORE_PASSWORD"             -keypass "$LPSM_VOD_KEY_PASSWORD"             -file /tmp/lpsm-test.csr
+          keytool -certreq             -alias "$LPSM_VOD_KEY_ALIAS"             -keystore "$LPSM_VOD_KEYSTORE_PATH"             -storepass "$LPSM_VOD_KEYSTORE_PASSWORD"             -keypass "$LPSM_VOD_KEYSTORE_PASSWORD"             -file /tmp/lpsm-test.csr
 
           rm -f /tmp/lpsm-test.csr
+          echo "Assinatura validada com sucesso."
 
       - name: Definir versao
         id: version
@@ -62,6 +66,7 @@ jobs:
         run: |
           VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
           VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))
+
           echo "LPSM_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
@@ -71,15 +76,23 @@ jobs:
         shell: bash
         run: gradle assembleRelease --stacktrace
 
+      - name: Confirmar assinatura do APK
+        shell: bash
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs             android/app/build/outputs/apk/release/app-release.apk
+
       - name: Preparar APK
         shell: bash
-        run: cp android/app/build/outputs/apk/release/app-release.apk LPSM-Filmes-Series.apk
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk LPSM-Filmes-Series.apk
 
-      - name: Publicar artefato
+      - name: Salvar APK no Actions
         uses: actions/upload-artifact@v4
         with:
           name: LPSM-Filmes-Series-RELEASE
           path: LPSM-Filmes-Series.apk
+          retention-days: 30
 
       - name: Criar update.json
         env:
@@ -88,24 +101,26 @@ jobs:
         shell: bash
         run: |
           SHA=$(sha256sum LPSM-Filmes-Series.apk | cut -d ' ' -f1)
-          echo '{' > update.json
-          echo '  "versionCode": '"$VERSION_CODE"',' >> update.json
-          echo '  "versionName": "'"$VERSION_NAME"'",' >> update.json
-          echo '  "apkUrl": "https://github.com/'"$GITHUB_REPOSITORY"'/releases/download/auto-update/LPSM-Filmes-Series.apk",' >> update.json
-          echo '  "sha256": "'"$SHA"'"' >> update.json
-          echo '}' >> update.json
 
-      - name: Publicar canal de atualizacao
+          printf '{\n  "versionCode": %s,\n  "versionName": "%s",\n  "apkUrl": "https://github.com/%s/releases/download/auto-update/LPSM-Filmes-Series.apk?build=%s",\n  "sha256": "%s",\n  "message": "Nova atualizacao disponivel."\n}\n'             "$VERSION_CODE"             "$VERSION_NAME"             "$GITHUB_REPOSITORY"             "$VERSION_CODE"             "$SHA" > update.json
+
+      - name: Publicar canal automatico
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
           VERSION_CODE: ${{ steps.version.outputs.code }}
         shell: bash
         run: |
-          TAG=auto-update
+          SHA=$(sha256sum LPSM-Filmes-Series.apk | cut -d ' ' -f1)
+
+          printf 'versionName=%s\nversionCode=%s\nsha256=%s\n'             "$VERSION_NAME" "$VERSION_CODE" "$SHA" > release-notes.txt
+
+          TAG="auto-update"
+
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "LPSM ${VERSION_NAME} build ${VERSION_CODE}"
+            gh release edit "$TAG"               --title "LPSM Filmes e Series ${VERSION_NAME} build ${VERSION_CODE}"               --notes-file release-notes.txt
           else
-            gh release create "$TAG" --title "LPSM ${VERSION_NAME} build ${VERSION_CODE}" --notes "Canal automatico"
+            gh release create "$TAG"               --title "LPSM Filmes e Series ${VERSION_NAME} build ${VERSION_CODE}"               --notes-file release-notes.txt
           fi
+
           gh release upload "$TAG" LPSM-Filmes-Series.apk update.json --clobber
