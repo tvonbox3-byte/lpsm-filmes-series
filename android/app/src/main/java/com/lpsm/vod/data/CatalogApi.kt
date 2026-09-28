@@ -8,435 +8,90 @@ import com.lpsm.vod.model.Season
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLDecoder
+import java.net.URLEncoder
 import java.security.MessageDigest
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.zip.GZIPInputStream
 
-/**
- * Catálogo VOD local.
- *
- * A partir da 1.5 o backend serve para ativação/configuração, mas a lista M3U é
- * baixada diretamente pela box e salva localmente. Isso evita que um cold-start
- * do Render precise processar uma lista grande antes de mostrar Filmes/Séries.
- */
 class CatalogApi(private val context: Context) {
-    private val cacheFile by lazy { File(context.filesDir, "vod_catalog_local_v152.json") }
-    private val cacheTtlMs = 6L * 60L * 60L * 1000L
-    @Volatile private var sourceUrl: String = DeviceApi.cachedSourceUrl(context)
+    private val mac get() = DeviceApi.deviceCode(context)
+    private val cacheDir by lazy { File(context.filesDir, "vod_catalog_cache_v160").apply { mkdirs() } }
+    private val legacyCacheDir by lazy { File(context.filesDir, "vod_catalog_cache").apply { mkdirs() } }
+    private val cacheTtlMs = 24L * 60L * 60L * 1000L
 
-    private data class Cached(val catalog: ParsedCatalog, val savedAt: Long)
+    private fun cacheKey(path: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(path.toByteArray())
+            .joinToString("") { "%02x".format(it) }
 
-    fun setSource(url: String) {
-        val clean = url.trim()
-        if (clean.isBlank()) return
-        if (clean != sourceUrl) {
-            sourceUrl = clean
-        }
+    private fun cacheFile(path: String): File = File(cacheDir, "${cacheKey(path)}.json")
+    private fun legacyCacheFile(path: String): File = File(legacyCacheDir, "${cacheKey(path)}.json")
+
+    private fun readJsonFile(f: File, allowStale: Boolean): JSONObject? {
+        if (!f.exists()) return null
+        if (!allowStale && System.currentTimeMillis() - f.lastModified() > cacheTtlMs) return null
+        return try { JSONObject(f.readText()) } catch (_: Exception) { null }
     }
 
-    fun hasSavedCatalog(): Boolean = try {
-        cacheFile.exists() && cacheFile.length() > 100
-    } catch (_: Exception) {
-        false
+    private fun readCache(path: String, allowStale: Boolean): JSONObject? {
+        readJsonFile(cacheFile(path), allowStale)?.let { return it }
+        return readJsonFile(legacyCacheFile(path), true)
     }
 
-    fun categories(series: Boolean): Pair<List<Category>, String> {
-        val c = ensureCatalog()
-        val list = if (series) c.seriesCategories else c.movieCategories
-        val summary = if (series) {
-            "${c.seriesCount} séries • ${c.episodeCount} episódios"
-        } else {
-            "${c.movieCount} filmes"
-        }
-        return list to summary
+    private fun writeCache(path: String, raw: String) {
+        try { cacheFile(path).writeText(raw) } catch (_: Exception) { }
     }
 
-    fun items(series: Boolean, categoryId: String): List<PosterItem> {
-        val c = ensureCatalog()
-        return if (series) {
-            c.seriesByCategory[categoryId].orEmpty()
-        } else {
-            c.moviesByCategory[categoryId].orEmpty()
-        }
-    }
+    private fun get(path: String): JSONObject {
+        readCache(path, allowStale = false)?.let { return it }
 
-    fun seasons(seriesId: String): List<Season> =
-        ensureCatalog().seriesById[seriesId]?.seasons.orEmpty()
+        var lastError: Exception? = null
 
-    /**
-     * A tela pode chamar depois que o catálogo já apareceu. Se estiver antigo,
-     * atualizamos em segundo plano sem apagar a cópia que funciona.
-     */
-    fun refreshIfStale() {
-        val source = currentSourceOrNull() ?: return
-        val cached = loadCache(source) ?: return
-        if (System.currentTimeMillis() - cached.savedAt <= cacheTtlMs) return
-        refreshAsync(source)
-    }
-
-    fun forceRefreshAsync() {
-        val source = currentSourceOrNull() ?: return
-        refreshAsync(source)
-    }
-
-    fun prefetchHome() {
-        // Na 1.5 o catálogo completo já fica local; aqui apenas atualizamos em segundo plano se necessário.
-        refreshIfStale()
-    }
-
-    private fun ensureCatalog(): ParsedCatalog {
-        val source = currentSource()
-        val sourceHash = hash(source)
-
-        sharedCatalog?.let {
-            if (sharedSourceHash == sourceHash) return it
-        }
-
-        synchronized(LOCK) {
-            sharedCatalog?.let {
-                if (sharedSourceHash == sourceHash) return it
-            }
-
-            val cached = loadCache(source)
-            if (cached != null) {
-                sharedSourceHash = sourceHash
-                sharedCatalog = cached.catalog
-                if (System.currentTimeMillis() - cached.savedAt > cacheTtlMs) {
-                    refreshAsync(source)
-                }
-                return cached.catalog
-            }
-
-            // Só na primeira utilização desta fonte precisamos aguardar a M3U.
-            // Depois disso o app sempre abre do arquivo local primeiro.
-            val parsed = downloadAndParse(source)
-            saveCache(source, parsed)
-            sharedSourceHash = sourceHash
-            sharedCatalog = parsed
-            return parsed
-        }
-    }
-
-    private fun refreshAsync(source: String) {
-        if (!REFRESHING.compareAndSet(false, true)) return
-        REFRESH_POOL.execute {
+        // Duas tentativas ajudam quando o Render Free está acordando.
+        repeat(2) { attempt ->
             try {
-                val parsed = downloadAndParse(source)
-                synchronized(LOCK) {
-                    saveCache(source, parsed)
-                    if (hash(source) == hash(currentSourceOrNull().orEmpty())) {
-                        sharedSourceHash = hash(source)
-                        sharedCatalog = parsed
+                val url = URL("${DeviceApi.backendUrl(context)}$path")
+                val c = url.openConnection() as HttpURLConnection
+                try {
+                    c.connectTimeout = 15000
+                    c.readTimeout = 180000
+                    c.useCaches = false
+                    c.setRequestProperty("Accept", "application/json")
+                    c.setRequestProperty("Cache-Control", "no-cache")
+                    c.setRequestProperty("User-Agent", "LPSM-VOD/1.6.0")
+
+                    val raw = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
+                        ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    val root = JSONObject(raw.ifBlank { "{}" })
+
+                    if (!root.optBoolean("active", true)) {
+                        throw IllegalStateException(root.optString("message", "Aparelho não ativado"))
                     }
+                    if (c.responseCode !in 200..299) {
+                        throw IllegalStateException(root.optString("error", "Erro ${c.responseCode}"))
+                    }
+
+                    writeCache(path, raw)
+                    return root
+                } finally {
+                    c.disconnect()
                 }
-            } catch (_: Exception) {
-                // Nunca apaga o catálogo anterior por causa de uma falha de atualização.
-            } finally {
-                REFRESHING.set(false)
-            }
-        }
-    }
-
-    private fun currentSource(): String = currentSourceOrNull()
-        ?: throw IllegalStateException("Lista M3U ainda não configurada para este aparelho.")
-
-    private fun currentSourceOrNull(): String? {
-        val local = sourceUrl.trim()
-        if (local.startsWith("http://") || local.startsWith("https://")) return local
-        val cached = DeviceApi.cachedSourceUrl(context).trim()
-        if (cached.startsWith("http://") || cached.startsWith("https://")) {
-            sourceUrl = cached
-            return cached
-        }
-        return null
-    }
-
-    private fun downloadAndParse(sourceSpec: String): ParsedCatalog {
-        val errors = mutableListOf<String>()
-
-        // 1) Principal: o Render apenas retransmite a M3U.
-        // Ele NÃO precisa processar o catálogo, então começa a responder bem
-        // mais rápido e mantém compatibilidade com provedores que bloqueiam
-        // acesso direto da TV Box.
-        try {
-            return downloadAndParseHttp(
-                urlText = DeviceApi.sourceProxyUrl(context),
-                requestHeaders = emptyMap(),
-                label = "servidor",
-                connectTimeoutMs = 20_000,
-                readTimeoutMs = 180_000
-            )
-        } catch (e: Exception) {
-            errors += "servidor: ${friendlyError(e)}"
-        }
-
-        // 2) Reserva: se o backend estiver temporariamente indisponível,
-        // tenta a própria M3U diretamente.
-        try {
-            val (urlText, requestHeaders) = splitSourceSpec(sourceSpec)
-            return downloadAndParseHttp(
-                urlText = urlText,
-                requestHeaders = requestHeaders,
-                label = "direto",
-                connectTimeoutMs = 15_000,
-                readTimeoutMs = 90_000
-            )
-        } catch (e: Exception) {
-            errors += "direto: ${friendlyError(e)}"
-        }
-
-        throw IllegalStateException(
-            "Não foi possível carregar a lista M3U. ${errors.joinToString(" • ")}"
-        )
-    }
-
-    private fun downloadAndParseHttp(
-        urlText: String,
-        requestHeaders: Map<String, String>,
-        label: String,
-        connectTimeoutMs: Int,
-        readTimeoutMs: Int
-    ): ParsedCatalog {
-        val connection = URL(urlText).openConnection() as HttpURLConnection
-        try {
-            connection.instanceFollowRedirects = true
-            connection.useCaches = false
-            connection.connectTimeout = connectTimeoutMs
-            connection.readTimeout = readTimeoutMs
-            connection.setRequestProperty("Accept", "application/x-mpegURL,text/plain,*/*")
-            connection.setRequestProperty(
-                "User-Agent",
-                requestHeaders["User-Agent"] ?: "LPSM-VOD/1.5.2"
-            )
-            connection.setRequestProperty("Cache-Control", "no-cache")
-            for ((key, value) in requestHeaders) {
-                if (!key.equals("User-Agent", true)) {
-                    connection.setRequestProperty(key, value)
+            } catch (e: Exception) {
+                lastError = e
+                if (attempt == 0) {
+                    try { Thread.sleep(2500) } catch (_: InterruptedException) { }
                 }
             }
-
-            val code = connection.responseCode
-            if (code !in 200..299) {
-                val error = connection.errorStream
-                    ?.bufferedReader()
-                    ?.use { it.readText().take(300) }
-                    .orEmpty()
-                throw IllegalStateException(
-                    "$label respondeu HTTP $code${if (error.isBlank()) "" else ": $error"}"
-                )
-            }
-
-            val input = decodedStream(connection)
-            java.io.InputStreamReader(input, Charsets.UTF_8)
-                .buffered(64 * 1024)
-                .use { reader ->
-                    return M3uParser.parse(reader)
-                }
-        } catch (e: java.net.SocketTimeoutException) {
-            throw IllegalStateException("tempo esgotado", e)
-        } finally {
-            connection.disconnect()
         }
+
+        // Se o servidor estiver temporariamente fora, usa até cache vencido.
+        readCache(path, allowStale = true)?.let { return it }
+        throw lastError ?: IllegalStateException("Não foi possível carregar o catálogo.")
     }
 
-    private fun friendlyError(e: Exception): String {
-        val text = e.message.orEmpty().trim()
-        return when {
-            text.isBlank() -> e.javaClass.simpleName
-            text.length > 180 -> text.take(180)
-            else -> text
-        }
-    }
+    private fun enc(v: String) = URLEncoder.encode(v, "UTF-8")
 
-    private fun decodedStream(c: HttpURLConnection): InputStream {
-        val input = c.inputStream
-        return if (c.contentEncoding?.contains("gzip", ignoreCase = true) == true) {
-            GZIPInputStream(input)
-        } else {
-            input
-        }
-    }
-
-    private fun splitSourceSpec(raw: String): Pair<String, Map<String, String>> {
-        val pipe = raw.indexOf('|')
-        if (pipe < 0) return raw.trim() to emptyMap()
-        val headers = linkedMapOf<String, String>()
-        for (part in raw.substring(pipe + 1).split('&')) {
-            val eq = part.indexOf('=')
-            if (eq <= 0) continue
-            val key = part.substring(0, eq).trim().let { if (it.equals("referrer", true)) "Referer" else it }
-            val value = try {
-                URLDecoder.decode(part.substring(eq + 1).replace("+", "%20"), "UTF-8")
-            } catch (_: Exception) {
-                part.substring(eq + 1)
-            }
-            if (key.isNotBlank() && value.isNotBlank()) headers[key] = value
-        }
-        return raw.substring(0, pipe).trim() to headers
-    }
-
-    private fun saveCache(source: String, catalog: ParsedCatalog) {
-        try {
-            val root = JSONObject()
-                .put("format", 2)
-                .put("sourceHash", hash(source))
-                .put("savedAt", System.currentTimeMillis())
-                .put("movieCategories", categoriesToJson(catalog.movieCategories))
-                .put("seriesCategories", categoriesToJson(catalog.seriesCategories))
-                .put("moviesByCategory", itemsMapToJson(catalog.moviesByCategory))
-                .put("seriesByCategory", itemsMapToJson(catalog.seriesByCategory))
-                .put("seriesById", seriesMapToJson(catalog.seriesById))
-                .put("ignored", catalog.ignored)
-
-            val tmp = File(cacheFile.parentFile, "${cacheFile.name}.tmp")
-            tmp.writeText(root.toString())
-            if (cacheFile.exists()) cacheFile.delete()
-            if (!tmp.renameTo(cacheFile)) {
-                cacheFile.writeText(root.toString())
-                tmp.delete()
-            }
-        } catch (_: Exception) {
-            // Se não for possível gravar, o catálogo em memória continua funcionando.
-        }
-    }
-
-    private fun loadCache(source: String): Cached? {
-        if (!cacheFile.exists() || cacheFile.length() < 100) return null
-        return try {
-            val root = JSONObject(cacheFile.readText())
-            if (root.optInt("format") != 2) return null
-            if (root.optString("sourceHash") != hash(source)) return null
-
-            val movieCategories = categoriesFromJson(root.optJSONArray("movieCategories"))
-            val seriesCategories = categoriesFromJson(root.optJSONArray("seriesCategories"))
-            val moviesByCategory = itemsMapFromJson(root.optJSONObject("moviesByCategory"))
-            val seriesByCategory = itemsMapFromJson(root.optJSONObject("seriesByCategory"))
-            val seriesById = seriesMapFromJson(root.optJSONObject("seriesById"))
-
-            Cached(
-                ParsedCatalog(
-                    movieCategories = movieCategories,
-                    seriesCategories = seriesCategories,
-                    moviesByCategory = moviesByCategory,
-                    seriesByCategory = seriesByCategory,
-                    seriesById = seriesById,
-                    ignored = root.optInt("ignored", 0)
-                ),
-                savedAt = root.optLong("savedAt", 0L)
-            )
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun categoriesToJson(list: List<Category>): JSONArray = JSONArray().also { a ->
-        list.forEach { a.put(JSONObject().put("id", it.id).put("name", it.name)) }
-    }
-
-    private fun categoriesFromJson(a: JSONArray?): List<Category> {
-        if (a == null) return emptyList()
-        return (0 until a.length()).mapNotNull { i ->
-            val o = a.optJSONObject(i) ?: return@mapNotNull null
-            Category(o.optString("id"), o.optString("name"))
-        }
-    }
-
-    private fun itemToJson(item: PosterItem): JSONObject = JSONObject()
-        .put("id", item.id)
-        .put("name", item.name)
-        .put("image", item.image ?: "")
-        .put("isSeries", item.isSeries)
-        .put("url", item.url ?: "")
-        .put("headers", JSONObject(item.headers))
-
-    private fun itemFromJson(o: JSONObject): PosterItem = PosterItem(
-        id = o.optString("id"),
-        name = o.optString("name"),
-        image = o.optString("image").takeIf { it.isNotBlank() },
-        isSeries = o.optBoolean("isSeries", false),
-        url = o.optString("url").takeIf { it.isNotBlank() },
-        headers = headersFromJson(o.optJSONObject("headers"))
-    )
-
-    private fun itemsMapToJson(map: Map<String, List<PosterItem>>): JSONObject = JSONObject().also { root ->
-        for ((key, list) in map) {
-            root.put(key, JSONArray().also { a -> list.forEach { a.put(itemToJson(it)) } })
-        }
-    }
-
-    private fun itemsMapFromJson(root: JSONObject?): Map<String, List<PosterItem>> {
-        if (root == null) return emptyMap()
-        val result = linkedMapOf<String, List<PosterItem>>()
-        val keys = root.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            val a = root.optJSONArray(key) ?: continue
-            result[key] = (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let(::itemFromJson) }
-        }
-        return result
-    }
-
-    private fun seriesMapToJson(map: Map<String, SeriesRecord>): JSONObject = JSONObject().also { root ->
-        for ((id, record) in map) {
-            val seasons = JSONArray()
-            for (season in record.seasons) {
-                val eps = JSONArray()
-                for (ep in season.episodes) {
-                    eps.put(
-                        JSONObject()
-                            .put("id", ep.id)
-                            .put("title", ep.title)
-                            .put("url", ep.url)
-                            .put("headers", JSONObject(ep.headers))
-                            .put("number", ep.number)
-                            .put("season", ep.season)
-                    )
-                }
-                seasons.put(JSONObject().put("number", season.number).put("episodes", eps))
-            }
-            root.put(id, JSONObject().put("item", itemToJson(record.item)).put("seasons", seasons))
-        }
-    }
-
-    private fun seriesMapFromJson(root: JSONObject?): Map<String, SeriesRecord> {
-        if (root == null) return emptyMap()
-        val result = linkedMapOf<String, SeriesRecord>()
-        val keys = root.keys()
-        while (keys.hasNext()) {
-            val id = keys.next()
-            val o = root.optJSONObject(id) ?: continue
-            val item = o.optJSONObject("item")?.let(::itemFromJson) ?: continue
-            val a = o.optJSONArray("seasons") ?: JSONArray()
-            val seasons = (0 until a.length()).mapNotNull { i ->
-                val s = a.optJSONObject(i) ?: return@mapNotNull null
-                val seasonNo = s.optInt("number", i + 1)
-                val eps = s.optJSONArray("episodes") ?: JSONArray()
-                Season(
-                    seasonNo,
-                    (0 until eps.length()).mapNotNull { j ->
-                        val e = eps.optJSONObject(j) ?: return@mapNotNull null
-                        Episode(
-                            id = e.optString("id"),
-                            title = e.optString("title", "Episódio ${j + 1}"),
-                            url = e.optString("url"),
-                            headers = headersFromJson(e.optJSONObject("headers")),
-                            number = e.optInt("number", j + 1),
-                            season = e.optInt("season", seasonNo)
-                        )
-                    }.sortedBy { it.number }
-                )
-            }.sortedBy { it.number }
-            result[id] = SeriesRecord(item, seasons)
-        }
-        return result
-    }
-
-    private fun headersFromJson(o: JSONObject?): Map<String, String> {
+    private fun headers(o: JSONObject?): Map<String, String> {
         if (o == null) return emptyMap()
         val result = linkedMapOf<String, String>()
         val keys = o.keys()
@@ -448,16 +103,72 @@ class CatalogApi(private val context: Context) {
         return result
     }
 
-    private fun hash(value: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }
+    fun categories(series: Boolean): Pair<List<Category>, String> {
+        val kind = if (series) "series" else "movie"
+        val root = get("/api/device/catalog/categories?mac=${enc(mac)}&kind=$kind")
+        val a = root.optJSONArray("categories") ?: JSONArray()
+        val list = (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i)
+            Category(o.optString("id"), o.optString("name", "Categoria"))
+        }
+        val stats = root.optJSONObject("stats")
+        val summary = if (series) {
+            "${stats?.optInt("series", 0) ?: 0} séries • ${stats?.optInt("episodes", 0) ?: 0} episódios"
+        } else {
+            "${stats?.optInt("movies", 0) ?: 0} filmes"
+        }
+        return list to summary
     }
 
-    companion object {
-        private val REFRESH_POOL = Executors.newSingleThreadExecutor()
-        private val REFRESHING = AtomicBoolean(false)
-        private val LOCK = Any()
-        @Volatile private var sharedSourceHash: String = ""
-        @Volatile private var sharedCatalog: ParsedCatalog? = null
+    fun items(series: Boolean, categoryId: String): List<PosterItem> {
+        val kind = if (series) "series" else "movie"
+        val root = get("/api/device/catalog/items?mac=${enc(mac)}&kind=$kind&categoryId=${enc(categoryId)}")
+        val a = root.optJSONArray("items") ?: JSONArray()
+        return (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i)
+            PosterItem(
+                id = o.optString("id"),
+                name = o.optString("name"),
+                image = o.optString("image").takeIf { it.isNotBlank() },
+                isSeries = o.optBoolean("isSeries", series),
+                url = o.optString("url").takeIf { it.isNotBlank() },
+                headers = headers(o.optJSONObject("headers"))
+            )
+        }
+    }
+
+    fun seasons(seriesId: String): List<Season> {
+        val root = get("/api/device/catalog/series?mac=${enc(mac)}&seriesId=${enc(seriesId)}")
+        val seasons = root.optJSONArray("seasons") ?: JSONArray()
+        return (0 until seasons.length()).map { i ->
+            val s = seasons.getJSONObject(i)
+            val seasonNo = s.optInt("number", i + 1)
+            val eps = s.optJSONArray("episodes") ?: JSONArray()
+            Season(
+                number = seasonNo,
+                episodes = (0 until eps.length()).map { j ->
+                    val e = eps.getJSONObject(j)
+                    Episode(
+                        id = e.optString("id"),
+                        title = e.optString("title", "Episódio ${j + 1}"),
+                        url = e.optString("url"),
+                        headers = headers(e.optJSONObject("headers")),
+                        number = e.optInt("number", j + 1),
+                        season = seasonNo
+                    )
+                }.sortedBy { it.number }
+            )
+        }.sortedBy { it.number }
+    }
+
+    fun prefetchHome() {
+        try {
+            val movieCats = categories(false).first
+            movieCats.take(3).forEach { items(false, it.id) }
+        } catch (_: Exception) { }
+        try {
+            val seriesCats = categories(true).first
+            seriesCats.take(3).forEach { items(true, it.id) }
+        } catch (_: Exception) { }
     }
 }

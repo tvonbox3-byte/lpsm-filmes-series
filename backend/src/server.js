@@ -238,7 +238,7 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const headers = {
-          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.5.2',
+          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.6.0',
           'accept': 'application/x-mpegURL,text/plain,*/*'
         };
 

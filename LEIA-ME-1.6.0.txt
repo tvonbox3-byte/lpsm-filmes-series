@@ -1,0 +1,47 @@
+LPSM FILMES & SÉRIES 1.6.0 — BASE FINAL ESTÁVEL
+
+OBJETIVO DESTA VERSÃO
+1. Voltar para o método de catálogo que JÁ FUNCIONOU:
+   app -> endpoints /api/device/catalog/... do backend.
+2. Manter cache local de 24 horas no aparelho.
+3. Corrigir a lentidão do parser de séries em listas grandes.
+4. Manter Temporada 1, Temporada 2, Temporada 3 etc. dentro da mesma série.
+5. Excluir canais ao vivo do catálogo.
+6. Fazer o app baixar a atualização AUTOMATICAMENTE.
+
+ATUALIZAÇÃO DO APK
+- O GitHub Actions gera SOMENTE APK RELEASE assinado pela chave fixa.
+- Cada build recebe versionCode maior automaticamente.
+- O app consulta update.json.
+- Quando encontra versão nova, baixa o APK sozinho.
+- Você NÃO precisa abrir o GitHub e baixar o APK.
+- Android/BlueStacks ainda mostra a confirmação final de Instalar/Atualizar.
+- Em Android 8+, na primeira vez pode pedir “Permitir desta fonte”.
+
+IMPORTANTE SOBRE A ASSINATURA
+Se o APK instalado hoje ainda tiver assinatura DEBUG antiga, o Android não deixa
+uma RELEASE atualizar por cima. Nesse caso, instale a 1.6.0 RELEASE manualmente
+UMA ÚLTIMA VEZ. Depois não desinstale mais: as próximas versões usam a mesma chave.
+
+COMO ENVIAR
+Extraia este ZIP e envie para a RAIZ do repositório, substituindo:
+- .github
+- android
+- backend
+- render.yaml
+- backend-url.txt
+
+Commit:
+LPSM Filmes e Series 1.6.0 - base final estavel e atualizacao automatica
+
+Depois:
+1. Espere o GitHub Actions ficar verde.
+2. Confirme que a etapa é “Gerar APK Release assinado”.
+3. No Render: Manual Deploy > Deploy latest commit (somente desta vez para alinhar o backend).
+4. Espere o Render finalizar.
+5. Instale a APK RELEASE 1.6.0 uma última vez se a versão atual não aceitar atualização.
+
+A partir daí:
+- atualizações do APK são baixadas pelo próprio app;
+- fechar a página do painel no navegador não desliga o backend;
+- se o backend ficar temporariamente indisponível, o último catálogo já carregado continua no cache do aparelho.

@@ -44,7 +44,7 @@ class MainActivity: Activity() {
     private val updateCheck = object : Runnable {
         override fun run() {
             UpdateManager.check(this@MainActivity)
-            updateHandler.postDelayed(this, 5 * 60 * 1000L)
+            updateHandler.postDelayed(this, 60 * 1000L)
         }
     }
     private val heartbeat = object : Runnable {
@@ -100,7 +100,7 @@ class MainActivity: Activity() {
 
         verifyAndLoad()
         // Verifica poucos segundos após abrir e continua verificando enquanto o app estiver em uso.
-        updateHandler.postDelayed(updateCheck, 2500L)
+        updateHandler.postDelayed(updateCheck, 1500L)
         heartbeatHandler.post(heartbeat)
     }
 
@@ -120,67 +120,27 @@ class MainActivity: Activity() {
     private fun verifyAndLoad() {
         b.progress.visibility = View.VISIBLE
         b.status.text = "Preparando seu catálogo..."
-
-        // Se este aparelho já foi ativado antes, abre imediatamente com a fonte e
-        // catálogo locais. O painel é consultado em segundo plano para atualizar
-        // status/validade, mas não segura a Home esperando o Render acordar.
-        val cached = DeviceApi.cachedActivation(this)
-        if (cached != null) {
-            api.setSource(cached.sourceUrl)
-            updateTabs()
-            loadCategories()
-            pool.execute { refreshActivationInBackground(cached.sourceUrl) }
-            return
-        }
-
         pool.execute {
             try {
                 DeviceApi.heartbeat(this)
                 val result = DeviceApi.fetchActivation(this)
                 runOnUiThread {
-                    if (result.active && result.sourceUrl.isNotBlank()) {
-                        api.setSource(result.sourceUrl)
+                    if (result.active) {
                         updateTabs()
                         loadCategories()
+                        // Deixa as primeiras categorias prontas no cache sem travar a tela.
                         pool.execute { api.prefetchHome() }
                     } else {
                         b.progress.visibility = View.GONE
-                        b.status.text = result.message
                         startActivityForResult(Intent(this, SetupActivity::class.java), 9)
                     }
                 }
             } catch (_: Exception) {
                 runOnUiThread {
                     b.progress.visibility = View.GONE
-                    b.status.text = "Sem conexão e ainda não há ativação/lista salva neste aparelho."
+                    b.status.text = "Sem conexão e ainda não há catálogo salvo neste aparelho."
                 }
             }
-        }
-    }
-
-    private fun refreshActivationInBackground(previousSource: String) {
-        try {
-            DeviceApi.heartbeat(this)
-            val result = DeviceApi.fetchActivation(this)
-            if (!result.active) {
-                runOnUiThread {
-                    b.status.text = result.message
-                    startActivityForResult(Intent(this, SetupActivity::class.java), 9)
-                }
-                return
-            }
-
-            if (result.sourceUrl.isNotBlank()) {
-                api.setSource(result.sourceUrl)
-                if (result.sourceUrl != previousSource) {
-                    api.forceRefreshAsync()
-                    runOnUiThread { loadCategories() }
-                } else {
-                    api.refreshIfStale()
-                }
-            }
-        } catch (_: Exception) {
-            // Com ativação e lista já salvas, falha temporária do painel não interfere no app.
         }
     }
 
@@ -202,11 +162,7 @@ class MainActivity: Activity() {
 
     private fun loadCategories() {
         b.progress.visibility = View.VISIBLE
-        b.status.text = if (api.hasSavedCatalog()) {
-            if (modeSeries) "Abrindo séries salvas..." else "Abrindo filmes salvos..."
-        } else {
-            if (modeSeries) "Baixando e organizando séries pela primeira vez..." else "Baixando e organizando filmes pela primeira vez..."
-        }
+        b.status.text = if (modeSeries) "Carregando séries..." else "Carregando filmes..."
         posters.submit(emptyList())
         pool.execute {
             try {
