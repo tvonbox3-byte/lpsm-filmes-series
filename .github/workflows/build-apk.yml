@@ -1,66 +1,12 @@
-name: Gerar APK LPSM Filmes e Series
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
-    paths:
-      - "android/**"
-      - ".github/workflows/build-apk.yml"
-
-permissions:
-  contents: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    env:
-      LPSM_VOD_KEYSTORE_PATH: ${{ github.workspace }}/lpsm-vod-release.jks
-      LPSM_VOD_KEYSTORE_PASSWORD: ${{ secrets.LPSM_VOD_KEYSTORE_PASSWORD }}
-      LPSM_VOD_KEY_ALIAS: ${{ secrets.LPSM_VOD_KEY_ALIAS }}
-      LPSM_VOD_KEY_PASSWORD: ${{ secrets.LPSM_VOD_KEY_PASSWORD }}
-
-    steps:
-      - name: Baixar projeto
-        uses: actions/checkout@v4
-
-      - name: Configurar Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Configurar Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
-
-      - name: Verificar assinatura
-        id: signing
-        env:
-          KEYSTORE_B64: ${{ secrets.LPSM_VOD_KEYSTORE_BASE64 }}
-        shell: bash
-        run: |
-          if [ -n "$KEYSTORE_B64" ] && [ -n "$LPSM_VOD_KEYSTORE_PASSWORD" ] && [ -n "$LPSM_VOD_KEY_ALIAS" ] && [ -n "$LPSM_VOD_KEY_PASSWORD" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            printf '%s' "$KEYSTORE_B64" | base64 --decode > "$LPSM_VOD_KEYSTORE_PATH"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "ERRO: assinatura estável não configurada. Os 4 Repository Secrets LPSM_VOD_* são obrigatórios para atualização automática."
-            exit 1
-          fi
-
-      - name: Definir versão automática da build
-        id: version
-        working-directory: android
-        shell: bash
-        run: |
           VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
           VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))
+
           echo "LPSM_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
-          echo "Versão: $VERSION_NAME | versionCode automático: $VERSION_CODE"
+
+          echo "Versão: $VERSION_NAME"
+          echo "versionCode: $VERSION_CODE"
 
       - name: Gerar APK Release assinado
         working-directory: android
@@ -70,8 +16,9 @@ jobs:
         shell: bash
         run: |
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
-          "$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk
-          echo "APK de release assinado com a chave fixa do projeto."
+          "$APKSIGNER" verify --verbose --print-certs \
+            android/app/build/outputs/apk/release/app-release.apk
+          echo "APK Release assinado corretamente."
 
       - name: Preparar APK
         shell: bash
@@ -92,6 +39,7 @@ jobs:
         shell: bash
         run: |
           SHA=$(sha256sum LPSM-Filmes-Series.apk | cut -d ' ' -f1)
+
           cat > update.json <<JSON
           {
             "versionCode": ${VERSION_CODE},
@@ -101,9 +49,10 @@ jobs:
             "message": "Nova atualização do LPSM Filmes & Séries disponível."
           }
           JSON
+
           cat update.json
 
-      - name: Salvar metadados da atualização no Actions
+      - name: Salvar metadados da atualização
         uses: actions/upload-artifact@v4
         with:
           name: LPSM-Update-Metadata
@@ -118,12 +67,15 @@ jobs:
         shell: bash
         run: |
           SHA=$(sha256sum LPSM-Filmes-Series.apk | cut -d ' ' -f1)
+
           cat > release-notes.txt <<EOF
           versionName=${VERSION_NAME}
           versionCode=${VERSION_CODE}
           sha256=${SHA}
           EOF
+
           AUTO_TAG="auto-update"
+
           if gh release view "$AUTO_TAG" >/dev/null 2>&1; then
             gh release edit "$AUTO_TAG" \
               --title "LPSM Filmes & Séries ${VERSION_NAME} • build ${VERSION_CODE}" \
@@ -133,7 +85,9 @@ jobs:
               --title "LPSM Filmes & Séries ${VERSION_NAME} • build ${VERSION_CODE}" \
               --notes-file release-notes.txt
           fi
-          gh release upload "$AUTO_TAG" LPSM-Filmes-Series.apk update.json --clobber
+
+          gh release upload "$AUTO_TAG" \
+            LPSM-Filmes-Series.apk update.json --clobber
 
       - name: Publicar release da versão
         env:
@@ -143,6 +97,7 @@ jobs:
         shell: bash
         run: |
           TAG="v${VERSION_NAME}"
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" \
               --title "LPSM Filmes & Séries ${VERSION_NAME}" \
@@ -152,4 +107,6 @@ jobs:
               --title "LPSM Filmes & Séries ${VERSION_NAME}" \
               --notes "Versão ${VERSION_NAME}. Build ${VERSION_CODE}."
           fi
-          gh release upload "$TAG" LPSM-Filmes-Series.apk update.json --clobber
+
+          gh release upload "$TAG" \
+            LPSM-Filmes-Series.apk update.json --clobber
