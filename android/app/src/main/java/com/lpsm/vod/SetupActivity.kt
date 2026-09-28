@@ -6,7 +6,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import com.lpsm.vod.data.DeviceApi
-import com.lpsm.vod.data.SourceConfig
 import com.lpsm.vod.databinding.ActivitySetupBinding
 import java.util.concurrent.Executors
 
@@ -37,23 +36,22 @@ class SetupActivity : Activity() {
         if (checking) return
         checking = true
         b.progress.visibility = View.VISIBLE
-        b.msg.text = "Verificando ativação..."
+        b.msg.text = "Registrando aparelho no painel..."
         pool.execute {
             try {
                 DeviceApi.heartbeat(this)
                 val result = DeviceApi.fetchActivation(this)
                 runOnUiThread {
-                    b.progress.visibility = View.VISIBLE
-                    if (result.active && result.source != null) {
-                        SourceConfig.save(this, result.source)
-                        b.msg.text = "Ativado. Abrindo catálogo..."
+                    if (result.active) {
+                        b.msg.text = "Ativado. Abrindo catálogo M3U..."
                         setResult(RESULT_OK)
                         handler.postDelayed({ finish() }, 350)
                     } else {
                         b.msg.text = result.message
                     }
+                    b.progress.visibility = View.VISIBLE
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 runOnUiThread {
                     b.msg.text = "Servidor temporariamente indisponível. Tentaremos novamente automaticamente."
                 }

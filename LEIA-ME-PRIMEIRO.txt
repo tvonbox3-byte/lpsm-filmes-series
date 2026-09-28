@@ -1,13 +1,19 @@
-LPSM FILMES & SERIES 1.1.0
+LPSM FILMES & SÉRIES 1.2.0 — M3U + ATIVAÇÃO AUTOMÁTICA
 
-1. Envie o CONTEUDO deste pacote para a raiz do repositorio lpsm-filmes-series.
-2. O GitHub Actions gera o APK.
-3. Publique o painel/backend no Render usando o render.yaml.
-4. No primeiro uso, o app mostra um codigo/MAC. Cadastre esse codigo no painel e informe a URL Xtream autorizada.
-5. O app recebe a fonte pelo servidor; o cliente nao digita usuario/senha.
+1. Extraia este ZIP.
+2. Envie TODO O CONTEÚDO para a raiz do repositório tvonbox3-byte/lpsm-filmes-series.
+3. O GitHub substitui os arquivos de mesmo nome.
+4. Commit sugerido:
+   LPSM Filmes e Series 1.2.0 - M3U e MAC automatico
 
-ATUALIZACOES SEM BAIXAR APK MANUALMENTE:
-Para atualizar por cima da versao instalada, o APK precisa manter sempre a mesma assinatura.
-O primeiro APK 1.0.1 foi de teste/debug. Portanto, depois de configurar a assinatura estavel, sera necessario desinstalar o APK de teste e instalar a primeira versao assinada UMA UNICA VEZ. Depois disso, as novas versoes aparecem dentro do proprio app.
+O QUE MUDA
+- Painel aceita URL M3U.
+- Aparelho novo aparece automaticamente como aguardando ativação.
+- Clique ATIVAR no painel para preencher o MAC automaticamente.
+- Lista M3U principal serve todos os aparelhos.
+- Filmes e séries são organizados pelo backend, sem depender de Xtream API no app.
+- A lista pode ser testada pelo painel.
 
-NAO envie o arquivo de assinatura (.jks) para o GitHub publico.
+IMPORTANTE
+- Não envie sua chave .jks para o GitHub.
+- Os 4 Repository Secrets de assinatura continuam os mesmos.

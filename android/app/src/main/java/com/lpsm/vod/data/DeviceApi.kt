@@ -16,7 +16,8 @@ object DeviceApi {
     data class Activation(
         val active: Boolean,
         val message: String,
-        val source: SourceConfig? = null
+        val name: String = "",
+        val expiresAt: String = ""
     )
 
     fun deviceCode(context: Context): String {
@@ -37,7 +38,7 @@ object DeviceApi {
             val c = URL(REMOTE_BACKEND_FILE).openConnection() as HttpURLConnection
             c.connectTimeout = 3000
             c.readTimeout = 3000
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.1")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.2")
             val text = c.inputStream.bufferedReader().use { it.readText().trim() }.trimEnd('/')
             if (text.startsWith("https://") || text.startsWith("http://")) text else null
         } catch (_: Exception) { null }
@@ -51,30 +52,20 @@ object DeviceApi {
         val mac = deviceCode(context)
         val url = "${backendUrl(context)}/api/device/config?mac=${URLEncoder.encode(mac, "UTF-8")}" 
         val c = URL(url).openConnection() as HttpURLConnection
-        c.connectTimeout = 6000
-        c.readTimeout = 10000
+        c.connectTimeout = 8000
+        c.readTimeout = 15000
         c.setRequestProperty("Accept", "application/json")
-        c.setRequestProperty("User-Agent", "LPSM-VOD/1.1")
+        c.setRequestProperty("User-Agent", "LPSM-VOD/1.2")
 
         val body = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
             ?.bufferedReader()?.use { it.readText() }.orEmpty()
         val root = JSONObject(body.ifBlank { "{}" })
-        if (!root.optBoolean("active", false)) {
-            return Activation(false, root.optString("message", "Aguardando ativação no painel."))
-        }
-
-        val src = root.optJSONObject("source") ?: return Activation(false, "Fonte não configurada no painel.")
-        val cfg = SourceConfig(
-            base = src.optString("base").trimEnd('/'),
-            username = src.optString("username"),
-            password = src.optString("password"),
-            clientName = root.optString("name"),
+        return Activation(
+            active = root.optBoolean("active", false),
+            message = root.optString("message", if (root.optBoolean("active", false)) "Ativado" else "Aguardando ativação no painel."),
+            name = root.optString("name"),
             expiresAt = root.optString("expiresAt")
         )
-        if (cfg.base.isBlank() || cfg.username.isBlank() || cfg.password.isBlank()) {
-            return Activation(false, "Fonte incompleta no painel.")
-        }
-        return Activation(true, "Ativado", cfg)
     }
 
     fun heartbeat(context: Context) {
@@ -83,12 +74,13 @@ object DeviceApi {
             val c = endpoint.openConnection() as HttpURLConnection
             c.requestMethod = "POST"
             c.doOutput = true
-            c.connectTimeout = 4000
-            c.readTimeout = 4000
+            c.connectTimeout = 5000
+            c.readTimeout = 5000
             c.setRequestProperty("Content-Type", "application/json")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.2")
             val payload = JSONObject().put("mac", deviceCode(context)).toString().toByteArray()
             c.outputStream.use { it.write(payload) }
-            c.inputStream.close()
+            (if (c.responseCode in 200..299) c.inputStream else c.errorStream)?.close()
         } catch (_: Exception) { }
     }
 }

@@ -11,7 +11,7 @@
     <header>
       <div>
         <h1>LPSM Filmes & Séries</h1>
-        <p>Painel separado para ativação e fontes de filmes/séries.</p>
+        <p>Painel de ativação automática por MAC e catálogo M3U.</p>
       </div>
       <button id="logout" class="ghost hidden">Sair</button>
     </header>
@@ -28,18 +28,31 @@
       <section class="card sourceCard">
         <div class="tableHead">
           <div>
-            <h2>Fonte principal de Filmes & Séries</h2>
-            <p class="hint">Cole aqui uma única URL Xtream autorizada. Todos os aparelhos ativados usam esta fonte automaticamente, exceto quando houver uma fonte específica no cadastro do aparelho.</p>
+            <h2>Lista M3U principal</h2>
+            <p class="hint">Cole a URL M3U autorizada. Os aparelhos ativados usam essa lista automaticamente. Não é necessário colocar usuário e senha manualmente no aplicativo.</p>
           </div>
           <span id="sourceBadge" class="badge">Não configurada</span>
         </div>
-        <label>URL da lista / Xtream</label>
-        <textarea id="defaultSourceUrl" rows="3" placeholder="http://servidor/get.php?username=...&amp;password=...&amp;type=m3u_plus"></textarea>
+        <label>URL M3U</label>
+        <textarea id="defaultSourceUrl" rows="3" placeholder="https://servidor/lista.m3u ou .../get.php?...&type=m3u_plus"></textarea>
         <div class="actions">
-          <button id="saveSource">Salvar fonte principal</button>
-          <button id="clearSource" class="ghost">Remover fonte</button>
+          <button id="saveSource">Salvar lista</button>
+          <button id="testSource" class="ghost">Salvar e testar catálogo</button>
+          <button id="clearSource" class="ghost">Remover</button>
         </div>
         <p id="sourceMsg" class="msg"></p>
+        <div id="catalogStats" class="catalogStats hidden"></div>
+      </section>
+
+      <section class="card pendingCard">
+        <div class="tableHead">
+          <div>
+            <h2>Aguardando ativação</h2>
+            <p class="hint">Assim que o aplicativo for instalado e aberto, o código/MAC aparece aqui automaticamente.</p>
+          </div>
+          <span id="pendingCount" class="badge">0 aguardando</span>
+        </div>
+        <div id="pendingList" class="pendingList"></div>
       </section>
 
       <div class="grid2">
@@ -48,15 +61,15 @@
           <input id="clientId" type="hidden" />
           <label>Nome do cliente/aparelho</label>
           <input id="name" placeholder="Ex.: João - Sala" />
-          <label>Código / MAC mostrado no app</label>
+          <label>Código / MAC</label>
           <input id="mac" placeholder="AA:BB:CC:DD:EE:FF" />
-          <label>URL Xtream autorizada</label>
-          <textarea id="sourceUrl" rows="3" placeholder="http://servidor/get.php?username=...&password=...&type=m3u_plus"></textarea>
+          <label>Lista M3U específica (opcional)</label>
+          <textarea id="sourceUrl" rows="3" placeholder="Deixe vazio para usar a Lista M3U principal"></textarea>
           <label>Validade (opcional)</label>
           <input id="expiresAt" type="datetime-local" />
           <label class="check"><input id="enabled" type="checkbox" checked /> Ativo</label>
           <div class="actions">
-            <button id="save">Salvar</button>
+            <button id="save">Salvar / Ativar</button>
             <button id="cancel" class="ghost hidden">Cancelar edição</button>
           </div>
           <p id="formMsg" class="msg"></p>
@@ -64,23 +77,24 @@
 
         <section class="card summary">
           <h2>Status</h2>
-          <div class="stats">
+          <div class="stats stats4">
             <div><strong id="total">0</strong><span>Aparelhos</span></div>
             <div><strong id="online">0</strong><span>Online</span></div>
             <div><strong id="active">0</strong><span>Ativos</span></div>
+            <div><strong id="pending">0</strong><span>Aguardando</span></div>
           </div>
-          <p>O aplicativo consulta este painel pelo servidor. O cliente não precisa digitar usuário ou senha da fonte. Se o aparelho não tiver uma fonte específica, ele recebe automaticamente a Fonte principal.</p>
+          <p>O app registra o MAC automaticamente. Você apenas escolhe o aparelho pendente, coloca o nome e ativa.</p>
         </section>
       </div>
 
       <section class="card tableCard">
         <div class="tableHead">
-          <h2>Aparelhos</h2>
+          <h2>Aparelhos ativados</h2>
           <button id="refresh" class="ghost">Atualizar</button>
         </div>
         <div class="tableWrap">
           <table>
-            <thead><tr><th>Status</th><th>Cliente</th><th>Código/MAC</th><th>Validade</th><th>Fonte</th><th>Ações</th></tr></thead>
+            <thead><tr><th>Status</th><th>Cliente</th><th>Código/MAC</th><th>Validade</th><th>Lista</th><th>Ações</th></tr></thead>
             <tbody id="rows"></tbody>
           </table>
         </div>
