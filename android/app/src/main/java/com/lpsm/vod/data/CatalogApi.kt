@@ -15,21 +15,27 @@ import java.security.MessageDigest
 
 class CatalogApi(private val context: Context) {
     private val mac get() = DeviceApi.deviceCode(context)
-    private val cacheDir by lazy { File(context.filesDir, "vod_catalog_cache_v140").apply { mkdirs() } }
+    private val cacheDir by lazy { File(context.filesDir, "vod_catalog_cache_v141").apply { mkdirs() } }
+    private val legacyCacheDir by lazy { File(context.filesDir, "vod_catalog_cache").apply { mkdirs() } }
     private val cacheTtlMs = 24L * 60L * 60L * 1000L
 
-    private fun cacheFile(path: String): File {
-        val key = MessageDigest.getInstance("SHA-256")
+    private fun cacheKey(path: String): String =
+        MessageDigest.getInstance("SHA-256")
             .digest(path.toByteArray())
             .joinToString("") { "%02x".format(it) }
-        return File(cacheDir, "$key.json")
-    }
 
-    private fun readCache(path: String, allowStale: Boolean): JSONObject? {
-        val f = cacheFile(path)
+    private fun cacheFile(path: String): File = File(cacheDir, "${cacheKey(path)}.json")
+    private fun legacyCacheFile(path: String): File = File(legacyCacheDir, "${cacheKey(path)}.json")
+
+    private fun readJsonFile(f: File, allowStale: Boolean): JSONObject? {
         if (!f.exists()) return null
         if (!allowStale && System.currentTimeMillis() - f.lastModified() > cacheTtlMs) return null
         return try { JSONObject(f.readText()) } catch (_: Exception) { null }
+    }
+
+    private fun readCache(path: String, allowStale: Boolean): JSONObject? {
+        readJsonFile(cacheFile(path), allowStale)?.let { return it }
+        return readJsonFile(legacyCacheFile(path), true)
     }
 
     private fun writeCache(path: String, raw: String) {
@@ -45,7 +51,7 @@ class CatalogApi(private val context: Context) {
             c.connectTimeout = 8000
             c.readTimeout = 60000
             c.setRequestProperty("Accept", "application/json")
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.4")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.4.1")
             val raw = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
             val root = JSONObject(raw.ifBlank { "{}" })
