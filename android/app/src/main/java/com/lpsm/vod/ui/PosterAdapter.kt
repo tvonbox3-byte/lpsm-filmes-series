@@ -12,6 +12,7 @@ import com.lpsm.vod.model.PosterItem
 
 class PosterAdapter(
     private val onClick: (PosterItem) -> Unit,
+    private val onLongClick: (PosterItem) -> Unit = {},
     private val onFocus: (PosterItem) -> Unit = {},
     private val onUp: (PosterItem) -> Unit = {}
 ) : RecyclerView.Adapter<PosterAdapter.VH>() {
@@ -64,6 +65,10 @@ class PosterAdapter(
         }
 
         h.b.root.setOnClickListener { onClick(item) }
+        h.b.root.setOnLongClickListener {
+            onLongClick(item)
+            true
+        }
 
         h.b.root.onFocusChangeListener = View.OnFocusChangeListener { v, focused ->
             v.animate()

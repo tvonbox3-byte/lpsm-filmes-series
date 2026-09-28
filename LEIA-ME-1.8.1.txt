@@ -1,0 +1,33 @@
+LPSM FILMES & SÉRIES 1.8.1
+
+ESTA VERSÃO PARTE DA 1.8.0 QUE JÁ ESTÁ FUNCIONANDO.
+NÃO ALTERA BACKEND, RENDER, WORKFLOW OU ASSINATURA.
+
+MUDANÇAS
+- Categorias adultas/XXX ficam sempre no FINAL da lista superior.
+- Conteúdo adulto continua protegido pelo PIN 0202, inclusive quando salvo localmente.
+- Adicionado "Continuar assistindo".
+  * aparece automaticamente depois de assistir pelo menos 15 segundos;
+  * salva o ponto do vídeo;
+  * ao abrir novamente, retoma do ponto salvo;
+  * ao chegar a 95%/final do vídeo, sai de Continuar assistindo;
+  * funciona também para episódios de séries.
+- Adicionado "★ Favoritos".
+  * segure OK sobre uma capa para adicionar/remover;
+  * Favoritos aparece no início da lista superior quando existir conteúdo salvo;
+  * segure OK dentro de Favoritos para remover.
+- Segure OK dentro de Continuar assistindo para remover o item da lista.
+- Favoritos e histórico ficam salvos LOCALMENTE na Box, sem aumentar carga no Render.
+- A organização rápida de séries 3000+ da 1.8.0 foi preservada sem alterações.
+- Busca, capas, navegação por controle e atualização automática foram preservadas.
+
+COMO ENVIAR
+Envie para a raiz do repositório SOMENTE a pasta:
+android
+
+Commit:
+LPSM Filmes e Series 1.8.1 - favoritos continuar e adulto por ultimo
+
+Depois aguarde o GitHub Actions ficar verde.
+NÃO precisa fazer deploy no Render para esta versão, porque o backend não mudou.
+A atualização automática deve publicar e instalar a 1.8.1 normalmente.

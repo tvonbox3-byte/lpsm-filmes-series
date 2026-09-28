@@ -9,7 +9,8 @@ data class PosterItem(
     val extension: String? = null,
     val isSeries: Boolean = false,
     val url: String? = null,
-    val headers: Map<String, String> = emptyMap()
+    val headers: Map<String, String> = emptyMap(),
+    val adult: Boolean = false
 )
 
 data class Episode(

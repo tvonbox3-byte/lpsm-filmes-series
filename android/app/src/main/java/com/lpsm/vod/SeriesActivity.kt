@@ -25,6 +25,10 @@ class SeriesActivity : Activity() {
     private lateinit var seasonsAdapter: SeasonAdapter
     private lateinit var episodesAdapter: EpisodeAdapter
     private var currentSeason: Season? = null
+    private var seriesIdValue = ""
+    private var seriesNameValue = "Série"
+    private var seriesImageValue: String? = null
+    private var seriesAdultValue = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,6 +40,11 @@ class SeriesActivity : Activity() {
         val seriesId = intent.getStringExtra("seriesId").orEmpty()
         val name = intent.getStringExtra("name").orEmpty().ifBlank { "Série" }
         val image = intent.getStringExtra("image")
+
+        seriesIdValue = seriesId
+        seriesNameValue = name
+        seriesImageValue = image
+        seriesAdultValue = intent.getBooleanExtra("adult", false)
 
         b.seriesTitle.text = name
         b.seriesPoster.load(image) { crossfade(true) }
@@ -151,11 +160,31 @@ class SeriesActivity : Activity() {
     private fun play(ep: Episode) {
         if (ep.url.isBlank()) return
 
+        val seasonNumber = currentSeason?.number ?: ep.season
+        val displayName = buildString {
+            append(seriesNameValue)
+            append(" • T")
+            append(seasonNumber)
+            append(" E")
+            append(ep.number)
+            if (ep.title.isNotBlank() && !ep.title.startsWith("Episódio", true)) {
+                append(" • ")
+                append(ep.title)
+            }
+        }
+
         startActivity(
             Intent(this, PlayerActivity::class.java)
                 .putExtra("url", ep.url)
-                .putExtra("title", ep.title)
+                .putExtra("title", displayName)
                 .putExtra("headers", JSONObject(ep.headers).toString())
+                .putExtra("contentKey", "s:${ep.id}")
+                .putExtra("contentId", ep.id)
+                .putExtra("contentName", displayName)
+                .putExtra("contentImage", seriesImageValue)
+                .putExtra("contentModeSeries", true)
+                .putExtra("contentAdult", seriesAdultValue)
+                .putExtra("seriesId", seriesIdValue)
         )
     }
 
