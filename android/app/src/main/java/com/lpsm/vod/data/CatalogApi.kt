@@ -62,7 +62,7 @@ class CatalogApi(private val context: Context) {
                 c.useCaches = false
                 c.setRequestProperty("Accept", "application/json")
                 c.setRequestProperty("Cache-Control", "no-cache")
-                c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.1")
+                c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.2")
 
                 val code = c.responseCode
                 val raw = (if (code in 200..299) c.inputStream else c.errorStream)

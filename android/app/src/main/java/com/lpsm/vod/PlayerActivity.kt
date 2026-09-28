@@ -11,8 +11,8 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.lpsm.vod.data.LocalLibrary
 import com.lpsm.vod.databinding.ActivityPlayerBinding
@@ -25,7 +25,6 @@ class PlayerActivity : Activity() {
 
     private var urlValue = ""
     private var contentKey = ""
-    private var contentId = ""
     private var contentName = ""
     private var contentImage: String? = null
     private var contentModeSeries = false
@@ -36,7 +35,7 @@ class PlayerActivity : Activity() {
     private val progressSaver = object : Runnable {
         override fun run() {
             saveProgress()
-            progressHandler.postDelayed(this, 15_000L)
+            progressHandler.postDelayed(this, 12_000L)
         }
     }
 
@@ -55,16 +54,17 @@ class PlayerActivity : Activity() {
 
         urlValue = url
         contentKey = intent.getStringExtra("contentKey").orEmpty()
-        contentId = intent.getStringExtra("contentId").orEmpty()
         contentName = intent.getStringExtra("contentName")
             ?.takeIf { it.isNotBlank() }
             ?: intent.getStringExtra("title").orEmpty()
         contentImage = intent.getStringExtra("contentImage")
-        contentModeSeries = intent.getBooleanExtra("contentModeSeries", false)
-        contentAdult = intent.getBooleanExtra("contentAdult", false)
+        contentModeSeries =
+            intent.getBooleanExtra("contentModeSeries", false)
+        contentAdult =
+            intent.getBooleanExtra("contentAdult", false)
 
         val headers = linkedMapOf<String, String>()
-        headers["User-Agent"] = "LPSM-VOD/1.8.1 (Android)"
+        headers["User-Agent"] = "LPSM-VOD/1.8.2 (Android)"
         headers["Accept"] = "*/*"
 
         intent.getStringExtra("headers")?.takeIf { it.isNotBlank() }?.let { raw ->
@@ -78,6 +78,7 @@ class PlayerActivity : Activity() {
                 }
             } catch (_: Exception) { }
         }
+
         headersValue = headers.toMap()
 
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -110,7 +111,10 @@ class PlayerActivity : Activity() {
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (playbackState == Player.STATE_ENDED && contentKey.isNotBlank()) {
+                        if (
+                            playbackState == Player.STATE_ENDED &&
+                            contentKey.isNotBlank()
+                        ) {
                             library.removeContinue(contentKey)
                         }
                     }
@@ -128,26 +132,38 @@ class PlayerActivity : Activity() {
                     .build()
 
                 exo.setMediaItem(media)
-                val resume = if (contentKey.isNotBlank()) library.resumePosition(contentKey) else 0L
+
+                val resume =
+                    if (contentKey.isNotBlank()) {
+                        library.resumePosition(contentKey)
+                    } else {
+                        0L
+                    }
+
                 if (resume > 0L) exo.seekTo(resume)
+
                 exo.prepare()
                 exo.playWhenReady = true
             }
 
-        progressHandler.postDelayed(progressSaver, 15_000L)
+        progressHandler.postDelayed(progressSaver, 12_000L)
     }
 
     private fun saveProgress() {
         val exo = player ?: return
-        if (contentKey.isBlank() || contentId.isBlank() || urlValue.isBlank()) return
+        if (contentKey.isBlank() || urlValue.isBlank()) return
 
         val position = exo.currentPosition.coerceAtLeast(0L)
-        val duration = exo.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: 0L
+        val duration =
+            exo.duration.takeIf {
+                it != C.TIME_UNSET && it > 0L
+            } ?: 0L
 
         library.saveProgress(
             contentKey = contentKey,
-            itemId = contentId,
-            name = contentName.ifBlank { intent.getStringExtra("title").orEmpty() },
+            name = contentName.ifBlank {
+                intent.getStringExtra("title").orEmpty()
+            },
             image = contentImage,
             url = urlValue,
             headers = headersValue,

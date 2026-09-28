@@ -38,18 +38,22 @@ class MainActivity: Activity() {
     )
     private val posters = PosterAdapter(
         onClick = { openItem(it) },
-        onLongClick = { handleLongClick(it) },
+        onLongClick = { handlePosterAction(it) },
         onFocus = { showHero(it) },
         onUp = { focusSelectedCategory() }
     )
     private var modeSeries = false
     private lateinit var api: CatalogApi
     private lateinit var library: LocalLibrary
+
     private var serverCategories = listOf<Category>()
     private var currentCategoryId: String? = null
     private var currentCategoryAdult = false
+    private var localAdultIds = emptySet<String>()
+
     private val continueCategoryId = "__continue__"
     private val favoritesCategoryId = "__favorites__"
+
     private val pin = "0202"
     private val heartbeatHandler = Handler(Looper.getMainLooper())
     private val updateHandler = Handler(Looper.getMainLooper())
@@ -166,8 +170,6 @@ class MainActivity: Activity() {
     }
 
     private fun searchCatalog(query: String) {
-        currentCategoryId = "__search__"
-        currentCategoryAdult = false
         b.progress.visibility = View.VISIBLE
         b.sectionTitle.text = "Busca"
         b.status.text = "Pesquisando “$query”..."
@@ -176,9 +178,7 @@ class MainActivity: Activity() {
 
         pool.execute {
             try {
-                val list = api.search(modeSeries, query).map { item ->
-                    item.copy(adult = item.adult || isAdult(item.name))
-                }
+                val list = api.search(modeSeries, query)
                 runOnUiThread {
                     b.progress.visibility = View.GONE
                     posters.submit(list)
@@ -222,6 +222,9 @@ class MainActivity: Activity() {
     private fun switchMode(series: Boolean) {
         if (modeSeries == series && (b.grid.adapter?.itemCount ?: 0) > 0) return
         modeSeries = series
+        currentCategoryId = null
+        currentCategoryAdult = false
+        localAdultIds = emptySet()
         updateTabs()
         loadCategories()
     }
@@ -295,50 +298,57 @@ class MainActivity: Activity() {
             .show()
     }
 
-    private fun localCategories(): List<Category> {
-        val result = mutableListOf<Category>()
-        if (library.continueItems(modeSeries).isNotEmpty()) {
-            result += Category(continueCategoryId, "Continuar assistindo")
-        }
-        if (library.favoriteItems(modeSeries).isNotEmpty()) {
-            result += Category(favoritesCategoryId, "★ Favoritos")
-        }
-        return result
-    }
+
+    private fun localCategories(): List<Category> =
+        listOf(
+            Category(continueCategoryId, "Continuar assistindo"),
+            Category(favoritesCategoryId, "★ Favoritos")
+        )
 
     private fun orderedCategories(): List<Category> {
-        // Conteúdo adulto fica sempre por último, sem alterar a ordem enviada pelo provedor.
         val normal = serverCategories.filterNot { isAdult(it.name) }
-        val adult = serverCategories.filter { isAdult(it.name) }
-        return localCategories() + normal + adult
+        val adults = serverCategories.filter { isAdult(it.name) }
+
+        // Continuar/Favoritos primeiro; XXX/adultos sempre no final.
+        return localCategories() + normal + adults
     }
 
     private fun refreshCategoryBar() {
-        if (serverCategories.isEmpty()) return
-        cats.submit(orderedCategories())
+        if (serverCategories.isNotEmpty()) {
+            cats.submit(orderedCategories())
+        }
     }
 
     private fun loadCategories() {
         b.progress.visibility = View.VISIBLE
         b.status.text = if (modeSeries) "Carregando séries..." else "Carregando filmes..."
         posters.submit(emptyList())
+
         pool.execute {
             try {
                 val (list, summary) = api.categories(modeSeries)
+
                 runOnUiThread {
                     b.progress.visibility = View.GONE
                     serverCategories = list
+
                     val display = orderedCategories()
                     cats.submit(display)
                     b.status.text = "$summary • ${list.size} categorias"
-                    if (display.isNotEmpty()) {
-                        // Ao abrir o app, entra na primeira categoria real.
-                        // Continuar/Favoritos aparecem antes, mas não deixam a Home vazia.
-                        val first = display.firstOrNull {
-                            it.id != continueCategoryId && it.id != favoritesCategoryId
-                        } ?: display.first()
-                        cats.select(first)
-                        loadCategory(first, focusGrid = false)
+
+                    // Mantém a mesma Home funcional da 1.8.0:
+                    // abre primeiro uma categoria real do servidor.
+                    val firstServer = display.firstOrNull {
+                        it.id != continueCategoryId &&
+                        it.id != favoritesCategoryId
+                    }
+
+                    if (firstServer != null) {
+                        cats.select(firstServer)
+                        loadCategory(firstServer, focusGrid = false)
+                    } else if (display.isNotEmpty()) {
+                        cats.select(display.first())
+                        loadCategory(display.first(), focusGrid = false)
                     }
                 }
             } catch (e: Exception) {
@@ -351,7 +361,10 @@ class MainActivity: Activity() {
                     ) {
                         b.progress.visibility = View.GONE
                         b.status.text = msg
-                        startActivityForResult(Intent(this, SetupActivity::class.java), 9)
+                        startActivityForResult(
+                            Intent(this, SetupActivity::class.java),
+                            9
+                        )
                     } else {
                         showM3uLoginError()
                     }
@@ -365,46 +378,70 @@ class MainActivity: Activity() {
             loadCategory(c, focusGrid = true)
             return
         }
-        if (isAdult(c.name)) askPin { loadCategory(c, focusGrid = true) }
-        else loadCategory(c, focusGrid = true)
+
+        if (isAdult(c.name)) {
+            askPin { loadCategory(c, focusGrid = true) }
+        } else {
+            loadCategory(c, focusGrid = true)
+        }
     }
 
     private fun loadCategory(c: Category, focusGrid: Boolean) {
         cats.select(c)
         currentCategoryId = c.id
-        currentCategoryAdult = isAdult(c.name)
+        currentCategoryAdult = false
+        localAdultIds = emptySet()
         b.sectionTitle.text = c.name
 
-        if (c.id == continueCategoryId || c.id == favoritesCategoryId) {
+        if (c.id == continueCategoryId) {
             b.progress.visibility = View.GONE
-            val list = if (c.id == continueCategoryId) {
-                library.continueItems(modeSeries)
-            } else {
-                library.favoriteItems(modeSeries)
-            }
+            val list = library.continueItems(modeSeries)
+            localAdultIds = library.continueAdultIds(modeSeries)
             posters.submit(list)
-            b.status.text = "${c.name} • ${list.size} títulos"
+            b.status.text = "Continuar assistindo • ${list.size} títulos"
+
             if (list.isNotEmpty()) {
                 showHero(list.first())
                 if (focusGrid) focusFirstPoster()
             } else {
-                clearHero()
+                b.heroTitle.text = "Continuar assistindo"
+                b.heroMeta.text = "Assista por alguns segundos para aparecer aqui."
+                b.heroPoster.setImageDrawable(null)
             }
             return
         }
 
+        if (c.id == favoritesCategoryId) {
+            b.progress.visibility = View.GONE
+            val list = library.favoriteItems(modeSeries)
+            localAdultIds = library.favoriteAdultIds(modeSeries)
+            posters.submit(list)
+            b.status.text = "★ Favoritos • ${list.size} títulos"
+
+            if (list.isNotEmpty()) {
+                showHero(list.first())
+                if (focusGrid) focusFirstPoster()
+            } else {
+                b.heroTitle.text = "★ Favoritos"
+                b.heroMeta.text = "Segure OK em uma capa para adicionar aos favoritos."
+                b.heroPoster.setImageDrawable(null)
+            }
+            return
+        }
+
+        currentCategoryAdult = isAdult(c.name)
         b.progress.visibility = View.VISIBLE
         b.status.text = "${c.name} • carregando..."
+
         pool.execute {
             try {
-                val adultCategory = isAdult(c.name)
-                val list = api.items(modeSeries, c.id).map { item ->
-                    item.copy(adult = item.adult || adultCategory)
-                }
+                val list = api.items(modeSeries, c.id)
+
                 runOnUiThread {
                     b.progress.visibility = View.GONE
                     posters.submit(list)
                     b.status.text = "${c.name} • ${list.size} títulos"
+
                     if (list.isNotEmpty()) {
                         showHero(list.first())
                         if (focusGrid) focusFirstPoster()
@@ -430,18 +467,30 @@ class MainActivity: Activity() {
 
     private fun showHero(item: PosterItem) {
         b.heroTitle.text = item.name
-        val type = if (item.isSeries) "SÉRIE • OK para abrir temporadas" else "OK para assistir"
+
+        val baseText =
+            if (item.isSeries) {
+                "SÉRIE • OK para abrir temporadas"
+            } else {
+                "FILME • OK para assistir"
+            }
+
         b.heroMeta.text = when (currentCategoryId) {
-            continueCategoryId -> "CONTINUAR • OK para retomar • segure OK para remover da lista"
-            favoritesCategoryId -> "$type • ★ Favorito • segure OK para remover"
+            continueCategoryId ->
+                "CONTINUAR • OK para retomar • segure OK para remover"
+
+            favoritesCategoryId ->
+                "$baseText • ★ Favorito • segure OK para remover"
+
             else -> {
                 if (library.isFavorite(item.id, modeSeries)) {
-                    "$type • ★ Favorito • segure OK para remover"
+                    "$baseText • ★ Favorito • segure OK para remover"
                 } else {
-                    "$type • segure OK para favoritar"
+                    "$baseText • segure OK para favoritar"
                 }
             }
         }
+
         b.heroPoster.load(item.image) { crossfade(true) }
     }
 
@@ -451,53 +500,59 @@ class MainActivity: Activity() {
         b.heroPoster.setImageDrawable(null)
     }
 
-    private fun handleLongClick(item: PosterItem) {
+    private fun handlePosterAction(item: PosterItem) {
         when (currentCategoryId) {
             continueCategoryId -> {
-                library.removeContinueItem(item.id, modeSeries)
-                Toast.makeText(this, "Removido de Continuar assistindo", Toast.LENGTH_SHORT).show()
-                refreshCategoryBar()
-                val remaining = library.continueItems(modeSeries)
-                if (remaining.isNotEmpty()) {
-                    posters.submit(remaining)
-                    b.status.text = "Continuar assistindo • ${remaining.size} títulos"
-                    showHero(remaining.first())
-                } else {
-                    orderedCategories().firstOrNull()?.let { loadCategory(it, false) } ?: clearHero()
-                }
+                library.removeContinue(item.id)
+                Toast.makeText(
+                    this,
+                    "Removido de Continuar assistindo",
+                    Toast.LENGTH_SHORT
+                ).show()
+                loadCategory(
+                    Category(continueCategoryId, "Continuar assistindo"),
+                    focusGrid = false
+                )
             }
+
             favoritesCategoryId -> {
                 library.removeFavorite(item.id, modeSeries)
-                Toast.makeText(this, "Removido dos favoritos", Toast.LENGTH_SHORT).show()
-                refreshCategoryBar()
-                val remaining = library.favoriteItems(modeSeries)
-                if (remaining.isNotEmpty()) {
-                    posters.submit(remaining)
-                    b.status.text = "★ Favoritos • ${remaining.size} títulos"
-                    showHero(remaining.first())
-                } else {
-                    orderedCategories().firstOrNull()?.let { loadCategory(it, false) } ?: clearHero()
-                }
+                Toast.makeText(
+                    this,
+                    "Removido dos favoritos",
+                    Toast.LENGTH_SHORT
+                ).show()
+                loadCategory(
+                    Category(favoritesCategoryId, "★ Favoritos"),
+                    focusGrid = false
+                )
             }
+
             else -> {
                 val added = library.toggleFavorite(
                     item = item,
                     modeSeries = modeSeries,
-                    adult = item.adult || currentCategoryAdult
+                    adult = currentCategoryAdult || isAdult(item.name)
                 )
+
                 Toast.makeText(
                     this,
                     if (added) "Adicionado aos favoritos" else "Removido dos favoritos",
                     Toast.LENGTH_SHORT
                 ).show()
-                refreshCategoryBar()
+
                 showHero(item)
             }
         }
     }
 
+    private fun itemNeedsPin(item: PosterItem): Boolean =
+        currentCategoryAdult ||
+        localAdultIds.contains(item.id) ||
+        isAdult(item.name)
+
     private fun openItem(item: PosterItem) {
-        if (item.adult) {
+        if (itemNeedsPin(item)) {
             askPin { openItemUnlocked(item) }
         } else {
             openItemUnlocked(item)
@@ -505,43 +560,79 @@ class MainActivity: Activity() {
     }
 
     private fun openItemUnlocked(item: PosterItem) {
-        if (!item.isSeries) {
-            play(item)
+        // Esta parte é a mesma regra da 1.8.0:
+        // série SEMPRE abre SeriesActivity para mostrar temporadas/episódios.
+        if (item.isSeries) {
+            startActivity(
+                Intent(this, SeriesActivity::class.java)
+                    .putExtra("seriesId", item.id)
+                    .putExtra("name", item.name)
+                    .putExtra("image", item.image)
+                    .putExtra("adult", itemNeedsPin(item))
+            )
             return
         }
 
-        startActivity(
-            Intent(this, SeriesActivity::class.java)
-                .putExtra("seriesId", item.id)
-                .putExtra("name", item.name)
-                .putExtra("image", item.image)
-                .putExtra("adult", item.adult)
+        val url = item.url ?: return
+
+        val contentKey =
+            if (currentCategoryId == continueCategoryId) {
+                item.id
+            } else {
+                "m:${item.id}"
+            }
+
+        play(
+            url = url,
+            headers = item.headers,
+            title = item.name,
+            contentKey = contentKey,
+            image = item.image,
+            seriesMode = modeSeries,
+            adult = itemNeedsPin(item)
         )
     }
 
-    private fun play(item: PosterItem) {
-        val url = item.url ?: return
-        val contentKey = "${if (modeSeries) "s" else "m"}:${item.id}"
+    private fun play(
+        url: String,
+        headers: Map<String, String>,
+        title: String,
+        contentKey: String,
+        image: String?,
+        seriesMode: Boolean,
+        adult: Boolean
+    ) {
         val intent = Intent(this, PlayerActivity::class.java)
             .putExtra("url", url)
-            .putExtra("title", item.name)
-            .putExtra("headers", JSONObject(item.headers).toString())
+            .putExtra("title", title)
+            .putExtra("headers", JSONObject(headers).toString())
             .putExtra("contentKey", contentKey)
-            .putExtra("contentId", item.id)
-            .putExtra("contentName", item.name)
-            .putExtra("contentImage", item.image)
-            .putExtra("contentModeSeries", modeSeries)
-            .putExtra("contentAdult", item.adult)
+            .putExtra("contentName", title)
+            .putExtra("contentImage", image)
+            .putExtra("contentModeSeries", seriesMode)
+            .putExtra("contentAdult", adult)
+
         startActivity(intent)
     }
 
     override fun onRestart() {
         super.onRestart()
-        // Atualiza apenas as categorias locais. Não refaz download do servidor.
-        refreshCategoryBar()
-        val currentId = currentCategoryId
-        if (currentId == continueCategoryId || currentId == favoritesCategoryId) {
-            orderedCategories().firstOrNull { it.id == currentId }?.let { loadCategory(it, false) }
+
+        // Atualiza listas locais sem refazer download do catálogo.
+        when (currentCategoryId) {
+            continueCategoryId ->
+                loadCategory(
+                    Category(continueCategoryId, "Continuar assistindo"),
+                    focusGrid = false
+                )
+
+            favoritesCategoryId ->
+                loadCategory(
+                    Category(favoritesCategoryId, "★ Favoritos"),
+                    focusGrid = false
+                )
+
+            else -> refreshCategoryBar()
         }
     }
 

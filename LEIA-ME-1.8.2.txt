@@ -1,0 +1,44 @@
+LPSM FILMES & SÉRIES 1.8.2
+
+CORREÇÃO DE REGRESSÃO
+Esta versão foi refeita em cima da 1.8.0, que estava com Séries funcionando bem.
+
+SÉRIES
+- Restaurado integralmente o fluxo da 1.8.0:
+  série -> temporadas -> episódios -> player.
+- Mantidos os adapters e navegação de temporadas/episódios da 1.8.0.
+- Não alteramos Models.kt.
+- Só foi acrescentado ao play do episódio o necessário para "Continuar assistindo".
+
+FAVORITOS
+- "★ Favoritos" aparece sempre no começo das categorias.
+- Segure OK sobre a capa para adicionar/remover.
+- Também funciona com o botão MENU em controles que não reconhecem OK segurado.
+- Séries favoritas continuam sendo séries: ao abrir, mostram temporadas e episódios.
+
+CONTINUAR ASSISTINDO
+- "Continuar assistindo" aparece sempre no começo das categorias.
+- Filme ou episódio entra após cerca de 12 segundos assistidos.
+- Ao abrir, retoma do ponto salvo.
+- Ao chegar perto do final, é removido automaticamente.
+- Segure OK em Continuar assistindo para remover manualmente.
+
+ADULTOS
+- Categorias XXX/adulto ficam sempre por último.
+- PIN continua 0202.
+
+IMPORTANTE
+- NÃO altera backend.
+- NÃO altera Render.
+- NÃO altera workflow/assinatura.
+- Parte de séries 3000+ da 1.8.0 permanece.
+
+COMO ENVIAR
+Envie para a raiz do GitHub somente:
+- android
+
+Commit:
+LPSM Filmes e Series 1.8.2 - restaura temporadas e corrige favoritos continuar
+
+Depois aguarde o Actions ficar verde.
+A atualização automática deve publicar a 1.8.2.

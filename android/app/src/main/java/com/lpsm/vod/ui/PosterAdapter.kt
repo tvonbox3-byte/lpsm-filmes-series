@@ -70,6 +70,8 @@ class PosterAdapter(
             true
         }
 
+        var longOkHandled = false
+
         h.b.root.onFocusChangeListener = View.OnFocusChangeListener { v, focused ->
             v.animate()
                 .scaleX(if (focused) 1.055f else 1f)
@@ -84,16 +86,52 @@ class PosterAdapter(
         }
 
         h.b.root.setOnKeyListener { _, keyCode, event ->
-            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
-
             val p = h.bindingAdapterPosition
             if (p == RecyclerView.NO_POSITION) return@setOnKeyListener false
+
+            if (
+                keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                keyCode == KeyEvent.KEYCODE_ENTER
+            ) {
+                when (event.action) {
+                    KeyEvent.ACTION_DOWN -> {
+                        if (
+                            !longOkHandled &&
+                            (event.isLongPress || event.repeatCount >= 1)
+                        ) {
+                            longOkHandled = true
+                            onLongClick(item)
+                            return@setOnKeyListener true
+                        }
+                    }
+
+                    KeyEvent.ACTION_UP -> {
+                        if (longOkHandled) {
+                            longOkHandled = false
+                            return@setOnKeyListener true
+                        }
+                    }
+                }
+            }
+
+            // Botão MENU também serve como atalho de favorito em controles
+            // que não enviam corretamente o "OK segurado".
+            if (
+                keyCode == KeyEvent.KEYCODE_MENU &&
+                event.action == KeyEvent.ACTION_DOWN &&
+                event.repeatCount == 0
+            ) {
+                onLongClick(item)
+                return@setOnKeyListener true
+            }
+
+            if (event.action != KeyEvent.ACTION_DOWN) {
+                return@setOnKeyListener false
+            }
 
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP -> {
                     if (p < spanCount) {
-                        // Só o primeiro toque volta às categorias. Se a pessoa
-                        // estiver segurando ↑, não deixa o foco "voar" para o topo.
                         if (event.repeatCount == 0) onUp(item)
                         true
                     } else {
@@ -102,18 +140,14 @@ class PosterAdapter(
                 }
 
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    // Última linha: mantém o foco na grade em vez de pular
-                    // para outro botão/área ao segurar ↓.
                     p + spanCount >= itemCount
                 }
 
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    // Impede escapar da grade no primeiro item.
                     p == 0
                 }
 
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    // Impede escapar da grade no último item.
                     p == itemCount - 1
                 }
 
