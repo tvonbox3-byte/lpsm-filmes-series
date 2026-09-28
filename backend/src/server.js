@@ -4,7 +4,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, id } from './store.js';
 import { signToken, verifyToken } from './auth.js';
-import { catalogFor, clearCatalogCache, categoryItems, seriesSeasons } from './m3u.js';
+import { catalogFor, clearCatalogCache, categoryItems, seriesSeasons, searchCatalog } from './m3u.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const config = {
@@ -136,7 +136,7 @@ function deviceAccess(macValue) {
     };
   }
   const sourceUrl = sourceForClient(client);
-  if (!isM3uUrl(sourceUrl)) return { ok: false, status: 409, message: 'Lista M3U ainda não configurada no painel.' };
+  if (!isM3uUrl(sourceUrl)) return { ok: false, status: 409, message: 'Login não está funcionando' };
   return { ok: true, client, sourceUrl };
 }
 
@@ -207,7 +207,14 @@ const server = http.createServer(async (req, res) => {
       }
       const sourceUrl = sourceForClient(client);
       if (!isM3uUrl(sourceUrl)) {
-        return json(res, 200, { active: false, pending: false, message: 'Lista M3U ainda não configurada no painel.' });
+        return json(res, 200, {
+          active: true,
+          sourceReady: false,
+          pending: false,
+          name: client.name || '',
+          expiresAt: client.expiresAt || '',
+          message: 'Login não está funcionando'
+        });
       }
       return json(res, 200, {
         active: true,
@@ -305,30 +312,152 @@ const server = http.createServer(async (req, res) => {
 
     if (u.pathname === '/api/device/catalog/categories' && req.method === 'GET') {
       const access = deviceAccess(u.searchParams.get('mac'));
-      if (!access.ok) return json(res, 200, { active: false, message: access.message, categories: [] });
+      if (!access.ok) {
+        return json(res, 409, {
+          active: true,
+          sourceReady: false,
+          message: 'Login não está funcionando',
+          categories: []
+        });
+      }
+
       const kind = u.searchParams.get('kind') === 'series' ? 'series' : 'movie';
-      const catalog = await catalogFor(access.sourceUrl);
-      const categories = kind === 'series' ? catalog.seriesCategories : catalog.movieCategories;
-      return json(res, 200, { active: true, kind, categories, stats: catalog.stats });
+
+      try {
+        const catalog = await catalogFor(access.sourceUrl);
+        const categories = kind === 'series' ? catalog.seriesCategories : catalog.movieCategories;
+
+        if (!categories.length) {
+          return json(res, 503, {
+            active: true,
+            sourceReady: false,
+            message: 'Login não está funcionando',
+            categories: []
+          });
+        }
+
+        return json(res, 200, {
+          active: true,
+          sourceReady: true,
+          kind,
+          categories,
+          stats: catalog.stats
+        });
+      } catch (error) {
+        console.error('catalog.categories', error?.message || error);
+        return json(res, 503, {
+          active: true,
+          sourceReady: false,
+          message: 'Login não está funcionando',
+          categories: []
+        });
+      }
     }
 
     if (u.pathname === '/api/device/catalog/items' && req.method === 'GET') {
       const access = deviceAccess(u.searchParams.get('mac'));
-      if (!access.ok) return json(res, 200, { active: false, message: access.message, items: [] });
+      if (!access.ok) {
+        return json(res, 409, {
+          active: true,
+          sourceReady: false,
+          message: 'Login não está funcionando',
+          items: []
+        });
+      }
+
       const kind = u.searchParams.get('kind') === 'series' ? 'series' : 'movie';
       const categoryId = String(u.searchParams.get('categoryId') || '');
-      const catalog = await catalogFor(access.sourceUrl);
-      return json(res, 200, { active: true, items: categoryItems(catalog, kind, categoryId) });
+
+      try {
+        const catalog = await catalogFor(access.sourceUrl);
+        return json(res, 200, {
+          active: true,
+          sourceReady: true,
+          items: categoryItems(catalog, kind, categoryId)
+        });
+      } catch (error) {
+        console.error('catalog.items', error?.message || error);
+        return json(res, 503, {
+          active: true,
+          sourceReady: false,
+          message: 'Login não está funcionando',
+          items: []
+        });
+      }
+    }
+
+
+    if (u.pathname === '/api/device/catalog/search' && req.method === 'GET') {
+      const access = deviceAccess(u.searchParams.get('mac'));
+      if (!access.ok) {
+        return json(res, 409, {
+          active: true,
+          sourceReady: false,
+          message: 'Login não está funcionando',
+          items: []
+        });
+      }
+
+      const kind = u.searchParams.get('kind') === 'series' ? 'series' : 'movie';
+      const query = String(u.searchParams.get('q') || '').trim();
+
+      if (query.length < 2) {
+        return json(res, 200, {
+          active: true,
+          sourceReady: true,
+          items: []
+        });
+      }
+
+      try {
+        const catalog = await catalogFor(access.sourceUrl);
+        return json(res, 200, {
+          active: true,
+          sourceReady: true,
+          items: searchCatalog(catalog, kind, query)
+        });
+      } catch (error) {
+        console.error('catalog.search', error?.message || error);
+        return json(res, 503, {
+          active: true,
+          sourceReady: false,
+          message: 'Login não está funcionando',
+          items: []
+        });
+      }
     }
 
     if (u.pathname === '/api/device/catalog/series' && req.method === 'GET') {
       const access = deviceAccess(u.searchParams.get('mac'));
-      if (!access.ok) return json(res, 200, { active: false, message: access.message, seasons: [] });
+      if (!access.ok) {
+        return json(res, 409, {
+          active: true,
+          sourceReady: false,
+          message: 'Login não está funcionando',
+          seasons: []
+        });
+      }
+
       const seriesId = String(u.searchParams.get('seriesId') || '');
-      const catalog = await catalogFor(access.sourceUrl);
-      const seasons = seriesSeasons(catalog, seriesId);
-      if (!seasons) return json(res, 404, { error: 'Série não encontrada' });
-      return json(res, 200, { active: true, seasons });
+
+      try {
+        const catalog = await catalogFor(access.sourceUrl);
+        const seasons = seriesSeasons(catalog, seriesId);
+        if (!seasons) return json(res, 404, { error: 'Série não encontrada' });
+        return json(res, 200, {
+          active: true,
+          sourceReady: true,
+          seasons
+        });
+      } catch (error) {
+        console.error('catalog.series', error?.message || error);
+        return json(res, 503, {
+          active: true,
+          sourceReady: false,
+          message: 'Login não está funcionando',
+          seasons: []
+        });
+      }
     }
 
     if (u.pathname.startsWith('/api/admin/')) {

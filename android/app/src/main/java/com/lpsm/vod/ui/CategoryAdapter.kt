@@ -16,6 +16,8 @@ class CategoryAdapter(
     private var items = listOf<Category>()
     private var selectedId: String? = null
 
+    init { setHasStableIds(true) }
+
     fun submit(v: List<Category>) {
         items = v
         if (selectedId != null && items.none { it.id == selectedId }) {
@@ -28,6 +30,14 @@ class CategoryAdapter(
         selectedId = category.id
         notifyDataSetChanged()
     }
+
+    fun clearSelection() {
+        selectedId = null
+        notifyDataSetChanged()
+    }
+
+    override fun getItemId(position: Int): Long =
+        items.getOrNull(position)?.id?.hashCode()?.toLong() ?: RecyclerView.NO_ID
 
     fun selectedPosition(): Int {
         if (items.isEmpty()) return -1
@@ -61,9 +71,13 @@ class CategoryAdapter(
 
         h.b.root.setOnKeyListener { _, keyCode, event ->
             if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                selectedId = item.id
-                notifyDataSetChanged()
-                onDown(item)
+                // O primeiro toque entra na grade. Repetições de tecla segurada
+                // são consumidas para não recarregar a categoria e voltar ao topo.
+                if (event.repeatCount == 0) {
+                    selectedId = item.id
+                    notifyDataSetChanged()
+                    onDown(item)
+                }
                 true
             } else {
                 false

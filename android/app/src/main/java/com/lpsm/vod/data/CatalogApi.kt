@@ -43,50 +43,79 @@ class CatalogApi(private val context: Context) {
     }
 
     private fun get(path: String): JSONObject {
+        // Catálogo válido salvo: abre imediatamente sem depender do painel.
         readCache(path, allowStale = false)?.let { return it }
 
-        var lastError: Exception? = null
+        try {
+            val url = URL("${DeviceApi.backendUrl(context)}$path")
+            val c = url.openConnection() as HttpURLConnection
 
-        // Duas tentativas ajudam quando o Render Free está acordando.
-        repeat(2) { attempt ->
             try {
-                val url = URL("${DeviceApi.backendUrl(context)}$path")
-                val c = url.openConnection() as HttpURLConnection
-                try {
-                    c.connectTimeout = 15000
-                    c.readTimeout = 180000
-                    c.useCaches = false
-                    c.setRequestProperty("Accept", "application/json")
-                    c.setRequestProperty("Cache-Control", "no-cache")
-                    c.setRequestProperty("User-Agent", "LPSM-VOD/1.6.0")
+                c.connectTimeout = 10000
+                c.readTimeout = 65000
+                c.useCaches = false
+                c.setRequestProperty("Accept", "application/json")
+                c.setRequestProperty("Cache-Control", "no-cache")
+                c.setRequestProperty("User-Agent", "LPSM-VOD/1.7.0")
 
-                    val raw = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
-                        ?.bufferedReader()?.use { it.readText() }.orEmpty()
-                    val root = JSONObject(raw.ifBlank { "{}" })
+                val code = c.responseCode
+                val raw = (if (code in 200..299) c.inputStream else c.errorStream)
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    .orEmpty()
 
-                    if (!root.optBoolean("active", true)) {
-                        throw IllegalStateException(root.optString("message", "Aparelho não ativado"))
-                    }
-                    if (c.responseCode !in 200..299) {
-                        throw IllegalStateException(root.optString("error", "Erro ${c.responseCode}"))
-                    }
-
-                    writeCache(path, raw)
-                    return root
-                } finally {
-                    c.disconnect()
+                val root = try {
+                    JSONObject(raw.ifBlank { "{}" })
+                } catch (_: Exception) {
+                    JSONObject()
                 }
-            } catch (e: Exception) {
-                lastError = e
-                if (attempt == 0) {
-                    try { Thread.sleep(2500) } catch (_: InterruptedException) { }
+
+                // Ativação inválida continua sendo tratada separadamente.
+                if (!root.optBoolean("active", true)) {
+                    val msg = root.optString("message")
+                    if (
+                        msg.contains("aguardando ativ", true) ||
+                        msg.contains("paus", true) ||
+                        msg.contains("expir", true)
+                    ) {
+                        throw IllegalStateException(msg)
+                    }
+
+                    throw IllegalStateException("Login não está funcionando")
                 }
+
+                if (code !in 200..299) {
+                    throw IllegalStateException("Login não está funcionando")
+                }
+
+                // Um catálogo sem categorias de VOD é considerado login/fonte inválida.
+                if (path.contains("/categories")) {
+                    val categories = root.optJSONArray("categories")
+                    if (categories == null || categories.length() == 0) {
+                        throw IllegalStateException("Login não está funcionando")
+                    }
+                }
+
+                writeCache(path, raw)
+                return root
+            } finally {
+                c.disconnect()
             }
-        }
+        } catch (e: Exception) {
+            // Se já houve uma carga anterior, mantém o aparelho funcionando.
+            readCache(path, allowStale = true)?.let { return it }
 
-        // Se o servidor estiver temporariamente fora, usa até cache vencido.
-        readCache(path, allowStale = true)?.let { return it }
-        throw lastError ?: IllegalStateException("Não foi possível carregar o catálogo.")
+            val msg = e.message.orEmpty()
+            if (
+                msg.contains("aguardando ativ", true) ||
+                msg.contains("paus", true) ||
+                msg.contains("expir", true)
+            ) {
+                throw e
+            }
+
+            throw IllegalStateException("Login não está funcionando")
+        }
     }
 
     private fun enc(v: String) = URLEncoder.encode(v, "UTF-8")
@@ -124,6 +153,27 @@ class CatalogApi(private val context: Context) {
         val kind = if (series) "series" else "movie"
         val root = get("/api/device/catalog/items?mac=${enc(mac)}&kind=$kind&categoryId=${enc(categoryId)}")
         val a = root.optJSONArray("items") ?: JSONArray()
+        return (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i)
+            PosterItem(
+                id = o.optString("id"),
+                name = o.optString("name"),
+                image = o.optString("image").takeIf { it.isNotBlank() },
+                isSeries = o.optBoolean("isSeries", series),
+                url = o.optString("url").takeIf { it.isNotBlank() },
+                headers = headers(o.optJSONObject("headers"))
+            )
+        }
+    }
+
+
+    fun search(series: Boolean, query: String): List<PosterItem> {
+        val kind = if (series) "series" else "movie"
+        val root = get(
+            "/api/device/catalog/search?mac=${enc(mac)}&kind=$kind&q=${enc(query)}"
+        )
+        val a = root.optJSONArray("items") ?: JSONArray()
+
         return (0 until a.length()).map { i ->
             val o = a.getJSONObject(i)
             PosterItem(

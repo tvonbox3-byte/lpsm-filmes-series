@@ -55,10 +55,12 @@ class SeriesActivity : Activity() {
             LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         b.seasons.adapter = seasonsAdapter
         b.seasons.itemAnimator = null
+        b.seasons.preserveFocusAfterLayout = true
 
         b.episodes.layoutManager = LinearLayoutManager(this)
         b.episodes.adapter = episodesAdapter
         b.episodes.itemAnimator = null
+        b.episodes.preserveFocusAfterLayout = true
 
         if (seriesId.isBlank()) {
             b.seriesSubtitle.text = "Série inválida."

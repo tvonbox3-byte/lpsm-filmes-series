@@ -74,8 +74,10 @@ class SeasonAdapter(
             if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 val p = h.bindingAdapterPosition
                 if (p != RecyclerView.NO_POSITION) {
-                    if (p != selected) select(p)
-                    onDown(items[p])
+                    if (event.repeatCount == 0) {
+                        if (p != selected) select(p)
+                        onDown(items[p])
+                    }
                     true
                 } else {
                     false

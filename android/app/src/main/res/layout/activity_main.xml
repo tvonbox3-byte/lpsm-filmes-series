@@ -42,6 +42,20 @@
             android:background="@drawable/nav_button_bg"
             android:textColor="@color/text" />
 
+
+        <ImageButton
+            android:id="@+id/searchBtn"
+            android:layout_width="52dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="7dp"
+            android:padding="11dp"
+            android:src="@drawable/ic_search"
+            android:contentDescription="Pesquisar"
+            android:focusable="true"
+            android:clickable="true"
+            android:background="@drawable/nav_button_bg"
+            android:scaleType="centerInside" />
+
         <Button
             android:id="@+id/settingsBtn"
             android:layout_width="116dp"

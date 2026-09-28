@@ -6,8 +6,11 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
 import android.view.View
 import android.widget.EditText
+import android.view.inputmethod.InputMethodManager
+import android.content.Context
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import coil3.load
@@ -81,14 +84,18 @@ class MainActivity: Activity() {
 
         b.moviesTab.setOnClickListener { switchMode(false) }
         b.seriesTab.setOnClickListener { switchMode(true) }
+        b.searchBtn.setOnClickListener { openSearch() }
         b.settingsBtn.text = "ATIVAÇÃO"
         b.settingsBtn.setOnClickListener { startActivityForResult(Intent(this, SetupActivity::class.java), 9) }
 
+        // Só atravessa entre as áreas no PRIMEIRO toque.
+        // Quando o usuário segura a seta, os eventos repetidos ficam na área atual
+        // e não fazem o foco "pular" para outro lugar.
         val downToCategories = View.OnKeyListener { _, keyCode, event ->
-            if (event.action == android.view.KeyEvent.ACTION_DOWN &&
-                keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+            if (event.action == KeyEvent.ACTION_DOWN &&
+                keyCode == KeyEvent.KEYCODE_DPAD_DOWN
             ) {
-                focusSelectedCategory()
+                if (event.repeatCount == 0) focusSelectedCategory()
                 true
             } else {
                 false
@@ -96,12 +103,106 @@ class MainActivity: Activity() {
         }
         b.moviesTab.setOnKeyListener(downToCategories)
         b.seriesTab.setOnKeyListener(downToCategories)
+        b.searchBtn.setOnKeyListener(downToCategories)
         b.settingsBtn.setOnKeyListener(downToCategories)
+
+        b.grid.itemAnimator = null
+        b.grid.preserveFocusAfterLayout = true
+        b.categories.itemAnimator = null
+        b.categories.preserveFocusAfterLayout = true
 
         verifyAndLoad()
         // Verifica poucos segundos após abrir e continua verificando enquanto o app estiver em uso.
         updateHandler.postDelayed(updateCheck, 1500L)
         heartbeatHandler.post(heartbeat)
+    }
+
+    private fun openSearch() {
+        val input = EditText(this).apply {
+            hint = if (modeSeries) "Pesquisar séries" else "Pesquisar filmes"
+            isSingleLine = true
+            textSize = 18f
+            selectAllOnFocus = true
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(if (modeSeries) "Pesquisar séries" else "Pesquisar filmes")
+            .setView(input)
+            .setPositiveButton("BUSCAR", null)
+            .setNegativeButton("CANCELAR", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val query = input.text.toString().trim()
+                if (query.length < 2) {
+                    input.error = "Digite pelo menos 2 letras"
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                searchCatalog(query)
+            }
+
+            input.requestFocus()
+            input.postDelayed({
+                try {
+                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+                } catch (_: Exception) { }
+            }, 180L)
+        }
+
+        dialog.show()
+    }
+
+    private fun searchCatalog(query: String) {
+        b.progress.visibility = View.VISIBLE
+        b.sectionTitle.text = "Busca"
+        b.status.text = "Pesquisando “$query”..."
+        posters.submit(emptyList())
+        cats.clearSelection()
+
+        pool.execute {
+            try {
+                val list = api.search(modeSeries, query)
+                runOnUiThread {
+                    b.progress.visibility = View.GONE
+                    posters.submit(list)
+                    b.sectionTitle.text = "Resultados para “$query”"
+                    b.status.text = "${list.size} resultado${if (list.size == 1) "" else "s"}"
+
+                    if (list.isNotEmpty()) {
+                        showHero(list.first())
+                        focusFirstPoster()
+                    } else {
+                        b.heroTitle.text = "Nenhum resultado"
+                        b.heroMeta.text = "Tente outro nome."
+                        b.heroPoster.setImageDrawable(null)
+                    }
+                }
+            } catch (_: Exception) {
+                runOnUiThread { showM3uLoginError() }
+            }
+        }
+    }
+
+    private fun focusFirstPoster() {
+        b.grid.scrollToPosition(0)
+        b.grid.postDelayed({
+            b.grid.findViewHolderForAdapterPosition(0)
+                ?.itemView
+                ?.requestFocus()
+        }, 80L)
+    }
+
+    private fun showM3uLoginError() {
+        b.progress.visibility = View.GONE
+        cats.submit(emptyList())
+        posters.submit(emptyList())
+        b.status.text = "Login não está funcionando"
+        b.heroTitle.text = "Login não está funcionando"
+        b.heroMeta.text = "Verifique a lista M3U cadastrada no painel."
+        b.heroPoster.setImageDrawable(null)
     }
 
     private fun switchMode(series: Boolean) {
@@ -137,8 +238,7 @@ class MainActivity: Activity() {
                 }
             } catch (_: Exception) {
                 runOnUiThread {
-                    b.progress.visibility = View.GONE
-                    b.status.text = "Sem conexão e ainda não há catálogo salvo neste aparelho."
+                    showM3uLoginError()
                 }
             }
         }
@@ -178,10 +278,17 @@ class MainActivity: Activity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    b.progress.visibility = View.GONE
-                    b.status.text = "Erro: ${e.message}"
-                    if ((e.message ?: "").contains("ativ", true) || (e.message ?: "").contains("paus", true)) {
+                    val msg = e.message.orEmpty()
+                    if (
+                        msg.contains("aguardando ativ", true) ||
+                        msg.contains("paus", true) ||
+                        msg.contains("expir", true)
+                    ) {
+                        b.progress.visibility = View.GONE
+                        b.status.text = msg
                         startActivityForResult(Intent(this, SetupActivity::class.java), 9)
+                    } else {
+                        showM3uLoginError()
                     }
                 }
             }
@@ -208,20 +315,15 @@ class MainActivity: Activity() {
                     if (list.isNotEmpty()) {
                         showHero(list.first())
                         if (focusGrid) {
-                            b.grid.post {
-                                b.grid.scrollToPosition(0)
-                                b.grid.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus()
-                                    ?: b.grid.requestFocus()
-                            }
+                            focusFirstPoster()
                         }
                     } else {
                         clearHero()
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 runOnUiThread {
-                    b.progress.visibility = View.GONE
-                    b.status.text = "Erro: ${e.message}"
+                    showM3uLoginError()
                 }
             }
         }
@@ -269,6 +371,14 @@ class MainActivity: Activity() {
             .putExtra("title", title)
             .putExtra("headers", JSONObject(headers).toString())
         startActivity(intent)
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_SEARCH) {
+            openSearch()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     override fun onResume() {

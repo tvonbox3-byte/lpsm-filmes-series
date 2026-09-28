@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const MAX_ITEMS = Number(process.env.M3U_MAX_ITEMS || 250000);
+const MAX_ITEMS = Number(process.env.M3U_MAX_ITEMS || 600000);
 const cache = new Map();
 
 const hash = value => createHash('sha1').update(String(value || '')).digest('hex').slice(0, 20);
@@ -22,6 +22,78 @@ function displayName(extinf, a) {
   return norm(a['tvg-name'] || byComma || 'Sem título');
 }
 
+
+function imageScore(url, sourceKey = '') {
+  const u = lower(url);
+  const k = lower(sourceKey);
+  let score = 0;
+
+  if (/poster|cover|capa|w500|w780|original|tmdb/.test(u)) score += 20;
+  if (/poster|cover|series-cover|movie-cover/.test(k)) score += 30;
+  if (k === 'tvg-logo') score += 10;
+
+  if (/backdrop|fanart|landscape|still|screenshot|episode|thumb/.test(u)) score -= 15;
+  if (/backdrop|fanart|thumbnail|thumb/.test(k)) score -= 12;
+
+  return score;
+}
+
+function imageFromAttrs(a) {
+  const keys = [
+    'poster',
+    'cover',
+    'series-cover',
+    'movie-cover',
+    'tvg-logo',
+    'logo',
+    'icon',
+    'thumbnail',
+    'thumb',
+    'backdrop'
+  ];
+
+  const candidates = [];
+
+  for (const key of keys) {
+    const value = norm(a[key]);
+    if (/^https?:\/\//i.test(value)) {
+      candidates.push({
+        url: value,
+        score: imageScore(value, key)
+      });
+    }
+  }
+
+  candidates.sort((x, y) => y.score - x.score);
+  return candidates[0]?.url || '';
+}
+
+function rememberSeriesImage(series, url) {
+  const image = norm(url);
+  if (!/^https?:\/\//i.test(image)) return;
+
+  const entry = series.imageCandidates.get(image) || {
+    count: 0,
+    score: imageScore(image)
+  };
+
+  entry.count += 1;
+  series.imageCandidates.set(image, entry);
+}
+
+function bestSeriesImage(series) {
+  let best = null;
+
+  for (const [url, info] of series.imageCandidates.entries()) {
+    // Repetir a mesma imagem em muitos episódios é um forte sinal de
+    // capa da série; screenshots diferentes costumam aparecer só uma vez.
+    const score = info.score + Math.min(info.count, 20) * 4;
+    if (!best || score > best.score) best = { url, score };
+  }
+
+  return best?.url || series.image || null;
+}
+
 function episodeInfo(name, group = '') {
   const n = norm(name);
   const patterns = [
@@ -29,7 +101,9 @@ function episodeInfo(name, group = '') {
     /\bT\s*(\d{1,3})\s*[.\-_ ]*E\s*(\d{1,4})\b/i,
     /\b(\d{1,3})\s*x\s*(\d{2,4})\b/i,
     /\b(?:TEMP(?:ORADA)?|SEASON)\s*(\d{1,3})\D+(?:EP(?:IS[ÓO]DIO|ISODE)?|E)\s*(\d{1,4})\b/i,
-    /\b(\d{1,3})\s*[ªº]?\s*TEMPORADA\D+(?:EP(?:IS[ÓO]DIO|ISODE)?|E)\s*(\d{1,4})\b/i
+    /\b(\d{1,3})\s*[ªº]?\s*TEMPORADA\D+(?:EP(?:IS[ÓO]DIO|ISODE)?|E)\s*(\d{1,4})\b/i,
+    /\b(?:TEMPORADA|SEASON)\s*(\d{1,3})\D+(?:CAP(?:[ÍI]TULO)?|CHAPTER)\s*(\d{1,4})\b/i,
+    /\b(?:S|T)\s*(\d{1,3})\D+(?:EP|E)\s*[.\-_ ]*(\d{1,4})\b/i
   ];
 
   for (const p of patterns) {
@@ -213,14 +287,14 @@ function splitUrlAndHeaders(rawUrl, inheritedHeaders = {}) {
 
 async function parseM3u(url) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 180_000);
+  const timeout = setTimeout(() => controller.abort(), 55_000);
 
   try {
     const response = await fetch(url, {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'user-agent': 'LPSM-VOD-Catalog/1.6.0',
+        'user-agent': 'LPSM-VOD-Catalog/1.7.0',
         'accept': 'application/x-mpegURL,text/plain,*/*'
       }
     });
@@ -251,7 +325,7 @@ async function parseM3u(url) {
         const a = attrs(line);
         pending = {
           name: displayName(line, a),
-          logo: norm(a['tvg-logo']),
+          image: imageFromAttrs(a),
           group: norm(a['group-title']) || fallbackGroup,
           headers: {}
         };
@@ -297,7 +371,7 @@ async function parseM3u(url) {
         list.push({
           id: hash(`movie|${stream.url}`),
           name: meta.name,
-          image: meta.logo || null,
+          image: meta.image || null,
           url: stream.url,
           headers: stream.headers,
           isSeries: false
@@ -323,10 +397,11 @@ async function parseM3u(url) {
         series = {
           id: seriesId,
           name: seriesName,
-          image: meta.logo || null,
+          image: meta.image || null,
           isSeries: true,
           seasons: new Map(),
-          seenEpisodeUrls: new Map()
+          seenEpisodeUrls: new Map(),
+          imageCandidates: new Map()
         };
         seriesIndex.set(seriesId, series);
       } else if (!series.image && meta.logo) {
@@ -369,7 +444,9 @@ async function parseM3u(url) {
       for (const eps of series.seasons.values()) {
         eps.sort((a, b) => (a.number || 0) - (b.number || 0));
       }
+      series.image = bestSeriesImage(series);
       delete series.seenEpisodeUrls;
+      delete series.imageCandidates;
     }
 
     const seriesByCategory = new Map();
@@ -378,6 +455,20 @@ async function parseM3u(url) {
         categoryId,
         [...ids].map(id => seriesIndex.get(id)).filter(Boolean)
       );
+    }
+
+    const totalMovies = [...moviesByCategory.values()]
+      .reduce((n, x) => n + x.length, 0);
+    const totalSeries = seriesIndex.size;
+    const totalEpisodes = [...seriesIndex.values()]
+      .reduce(
+        (n, s) => n + [...s.seasons.values()]
+          .reduce((m, e) => m + e.length, 0),
+        0
+      );
+
+    if (totalMovies === 0 && totalSeries === 0 && totalEpisodes === 0) {
+      throw new Error('Login não está funcionando');
     }
 
     return {
@@ -389,15 +480,9 @@ async function parseM3u(url) {
       seriesByCategory,
       seriesIndex,
       stats: {
-        movies: [...moviesByCategory.values()]
-          .reduce((n, x) => n + x.length, 0),
-        series: seriesIndex.size,
-        episodes: [...seriesIndex.values()]
-          .reduce(
-            (n, s) => n + [...s.seasons.values()]
-              .reduce((m, e) => m + e.length, 0),
-            0
-          ),
+        movies: totalMovies,
+        series: totalSeries,
+        episodes: totalEpisodes,
         movieCategories: movieCategories.size,
         seriesCategories: seriesCategories.size,
         ignored,
@@ -450,6 +535,59 @@ export function categoryItems(catalog, kind, categoryId) {
       image: s.image,
       isSeries: true
     }));
+}
+
+
+export function searchCatalog(catalog, kind, query, limit = 700) {
+  const q = lower(query)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+  if (q.length < 2) return [];
+
+  const seen = new Set();
+  const scored = [];
+
+  const add = item => {
+    if (!item?.id || seen.has(item.id)) return;
+    seen.add(item.id);
+
+    const name = lower(item.name)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    const at = name.indexOf(q);
+    if (at < 0) return;
+
+    let score = 1000 - Math.min(at, 100);
+    if (name === q) score += 1000;
+    else if (name.startsWith(q)) score += 500;
+
+    scored.push({ item, score });
+  };
+
+  if (kind === 'series') {
+    for (const series of catalog.seriesIndex.values()) {
+      add({
+        id: series.id,
+        name: series.name,
+        image: series.image,
+        isSeries: true
+      });
+    }
+  } else {
+    for (const list of catalog.moviesByCategory.values()) {
+      for (const movie of list) add({ ...movie });
+    }
+  }
+
+  scored.sort((a, b) =>
+    b.score - a.score ||
+    String(a.item.name).localeCompare(String(b.item.name), 'pt-BR')
+  );
+
+  return scored.slice(0, limit).map(x => x.item);
 }
 
 export function seriesSeasons(catalog, seriesId) {

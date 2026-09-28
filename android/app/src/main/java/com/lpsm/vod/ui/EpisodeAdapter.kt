@@ -44,15 +44,22 @@ class EpisodeAdapter(
         }
 
         h.b.root.setOnKeyListener { _, keyCode, event ->
-            if (
-                event.action == KeyEvent.ACTION_DOWN &&
-                keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-                h.bindingAdapterPosition == 0
-            ) {
-                onUpFromFirst()
-                true
-            } else {
-                false
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+
+            val p = h.bindingAdapterPosition
+            if (p == RecyclerView.NO_POSITION) return@setOnKeyListener false
+
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    if (p == 0) {
+                        if (event.repeatCount == 0) onUpFromFirst()
+                        true
+                    } else false
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    p == itemCount - 1
+                }
+                else -> false
             }
         }
     }

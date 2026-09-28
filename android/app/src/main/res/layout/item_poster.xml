@@ -12,7 +12,7 @@
     <ImageView
         android:id="@+id/poster"
         android:layout_width="match_parent"
-        android:layout_height="150dp"
+        android:layout_height="210dp"
         android:scaleType="centerCrop"
         android:background="@drawable/poster_placeholder" />
 
@@ -23,7 +23,7 @@
         android:maxLines="2"
         android:ellipsize="end"
         android:textColor="@color/text"
-        android:textSize="13sp"
+        android:textSize="14sp"
         android:textStyle="bold"
         android:gravity="center_vertical"
         android:paddingStart="4dp"
