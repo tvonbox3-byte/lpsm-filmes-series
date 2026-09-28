@@ -1,0 +1,41 @@
+LPSM FILMES & SÉRIES 1.8.0 — SÉRIES 3000+ / MAIS RÁPIDO
+
+ESTA VERSÃO PARTE DA 1.7.1 QUE JÁ COMPILOU.
+
+PRINCIPAIS MUDANÇAS
+- Detecta automaticamente quando a URL M3U é do tipo Xtream/get.php.
+- O painel continua recebendo SOMENTE a M3U.
+- Por trás, quando possível, o backend usa a API autorizada do próprio provedor para:
+  * carregar a lista de séries;
+  * carregar capas;
+  * carregar categorias;
+  * pesquisar;
+  * buscar temporadas e episódios SOMENTE quando a série é aberta.
+- Isso evita manter todos os episódios de 3.000+ séries na memória ao mesmo tempo.
+- Para M3U genérica que não suporta essa API, mantém o parser M3U atual como fallback.
+- Cache de catálogos em memória limitado para evitar estourar os 512 MB do Render Free.
+- Detalhes de séries Xtream usam cache LRU de até 60 séries abertas.
+- O app abre o catálogo salvo no aparelho imediatamente quando já existe cache,
+  sem esperar o Render Free acordar.
+- Novo cache Android v180 para reconstruir o catálogo com a estrutura nova.
+- Busca, controle remoto, capas e atualização automática continuam.
+- NÃO altera .github/workflows nem a assinatura.
+
+SOBRE 3.000+ SÉRIES
+- Com URL Xtream compatível: 3.000+ séries ficam leves porque o backend guarda
+  principalmente o índice/capas; os episódios são carregados sob demanda.
+- M3U genérica continua funcionando, mas listas enormes com centenas de milhares
+  de episódios exigem mais memória/CPU e podem ser mais lentas no Render Free.
+
+COMO ENVIAR
+Envie para a raiz do repositório somente:
+- android
+- backend
+
+Commit:
+LPSM Filmes e Series 1.8.0 - series 3000 e carregamento rapido
+
+Depois:
+1. Aguarde o GitHub Actions ficar verde.
+2. No Render: Manual Deploy > Deploy latest commit.
+3. Não baixe APK manualmente; a atualização automática deve publicar e detectar a 1.8.0.

@@ -15,7 +15,7 @@ import java.security.MessageDigest
 
 class CatalogApi(private val context: Context) {
     private val mac get() = DeviceApi.deviceCode(context)
-    private val cacheDir by lazy { File(context.filesDir, "vod_catalog_cache_v160").apply { mkdirs() } }
+    private val cacheDir by lazy { File(context.filesDir, "vod_catalog_cache_v180").apply { mkdirs() } }
     private val legacyCacheDir by lazy { File(context.filesDir, "vod_catalog_cache").apply { mkdirs() } }
     private val cacheTtlMs = 24L * 60L * 60L * 1000L
 
@@ -42,6 +42,12 @@ class CatalogApi(private val context: Context) {
         try { cacheFile(path).writeText(raw) } catch (_: Exception) { }
     }
 
+    fun hasCachedCategories(series: Boolean): Boolean {
+        val kind = if (series) "series" else "movie"
+        val path = "/api/device/catalog/categories?mac=${enc(mac)}&kind=$kind"
+        return cacheFile(path).exists() || legacyCacheFile(path).exists()
+    }
+
     private fun get(path: String): JSONObject {
         // Catálogo válido salvo: abre imediatamente sem depender do painel.
         readCache(path, allowStale = false)?.let { return it }
@@ -56,7 +62,7 @@ class CatalogApi(private val context: Context) {
                 c.useCaches = false
                 c.setRequestProperty("Accept", "application/json")
                 c.setRequestProperty("Cache-Control", "no-cache")
-                c.setRequestProperty("User-Agent", "LPSM-VOD/1.7.0")
+                c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.0")
 
                 val code = c.responseCode
                 val raw = (if (code in 200..299) c.inputStream else c.errorStream)
@@ -142,7 +148,13 @@ class CatalogApi(private val context: Context) {
         }
         val stats = root.optJSONObject("stats")
         val summary = if (series) {
-            "${stats?.optInt("series", 0) ?: 0} séries • ${stats?.optInt("episodes", 0) ?: 0} episódios"
+            val seriesCount = stats?.optInt("series", 0) ?: 0
+            val episodeCount = stats?.optInt("episodes", -1) ?: -1
+            if (episodeCount > 0) {
+                "$seriesCount séries • $episodeCount episódios"
+            } else {
+                "$seriesCount séries"
+            }
         } else {
             "${stats?.optInt("movies", 0) ?: 0} filmes"
         }

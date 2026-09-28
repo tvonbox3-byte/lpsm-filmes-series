@@ -3,10 +3,20 @@ import { createHash } from 'node:crypto';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_ITEMS = Number(process.env.M3U_MAX_ITEMS || 600000);
 const cache = new Map();
+const MAX_CACHE_SOURCES = Number(process.env.M3U_CACHE_SOURCES || 1);
 
 const hash = value => createHash('sha1').update(String(value || '')).digest('hex').slice(0, 20);
 const norm = value => String(value || '').trim();
 const lower = value => norm(value).toLocaleLowerCase('pt-BR');
+
+function rememberCache(key, value) {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > MAX_CACHE_SOURCES) {
+    const oldest = cache.keys().next().value;
+    cache.delete(oldest);
+  }
+}
 
 function attrs(line) {
   const out = {};
@@ -294,7 +304,7 @@ async function parseM3u(url) {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'user-agent': 'LPSM-VOD-Catalog/1.7.0',
+        'user-agent': 'LPSM-VOD-Catalog/1.8.0',
         'accept': 'application/x-mpegURL,text/plain,*/*'
       }
     });
@@ -501,16 +511,17 @@ export async function catalogFor(sourceUrl, force = false) {
 
   const existing = cache.get(key);
   if (!force && existing) {
+    rememberCache(key, existing);
     if (existing.promise) return existing.promise;
     if (Date.now() - existing.createdAt < CACHE_TTL_MS) return existing;
   }
 
   const promise = parseM3u(key);
-  cache.set(key, { createdAt: Date.now(), promise });
+  rememberCache(key, { createdAt: Date.now(), promise });
 
   try {
     const catalog = await promise;
-    cache.set(key, catalog);
+    rememberCache(key, catalog);
     return catalog;
   } catch (e) {
     cache.delete(key);

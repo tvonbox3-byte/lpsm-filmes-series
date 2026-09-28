@@ -5,6 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { Store, id } from './store.js';
 import { signToken, verifyToken } from './auth.js';
 import { catalogFor, clearCatalogCache, categoryItems, seriesSeasons, searchCatalog } from './m3u.js';
+import {
+  xtreamSource,
+  xtreamCatalogFor,
+  xtreamCategoryItems,
+  xtreamSearch,
+  xtreamSeriesSeasons,
+  clearXtreamCache
+} from './xtream.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const config = {
@@ -140,6 +148,44 @@ function deviceAccess(macValue) {
   return { ok: true, client, sourceUrl };
 }
 
+
+async function sourceCatalog(sourceUrl, kind = 'all', force = false) {
+  const xtream = xtreamSource(sourceUrl);
+
+  if (xtream) {
+    try {
+      return await xtreamCatalogFor(sourceUrl, kind, force);
+    } catch (error) {
+      console.warn('Xtream indisponível, usando parser M3U:', error?.message || error);
+    }
+  }
+
+  return catalogFor(sourceUrl, force);
+}
+
+function sourceCategoryItems(catalog, kind, categoryId) {
+  return catalog?.provider === 'xtream'
+    ? xtreamCategoryItems(catalog, kind, categoryId)
+    : categoryItems(catalog, kind, categoryId);
+}
+
+function sourceSearch(catalog, kind, query) {
+  return catalog?.provider === 'xtream'
+    ? xtreamSearch(catalog, kind, query)
+    : searchCatalog(catalog, kind, query);
+}
+
+async function sourceSeriesSeasons(catalog, seriesId) {
+  return catalog?.provider === 'xtream'
+    ? xtreamSeriesSeasons(catalog, seriesId)
+    : seriesSeasons(catalog, seriesId);
+}
+
+function clearSourceCache(sourceUrl = '') {
+  clearSourceCache(sourceUrl);
+  clearXtreamCache(sourceUrl);
+}
+
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -245,7 +291,7 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const headers = {
-          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.6.0',
+          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.8.0',
           'accept': 'application/x-mpegURL,text/plain,*/*'
         };
 
@@ -324,7 +370,7 @@ const server = http.createServer(async (req, res) => {
       const kind = u.searchParams.get('kind') === 'series' ? 'series' : 'movie';
 
       try {
-        const catalog = await catalogFor(access.sourceUrl);
+        const catalog = await sourceCatalog(access.sourceUrl, kind);
         const categories = kind === 'series' ? catalog.seriesCategories : catalog.movieCategories;
 
         if (!categories.length) {
@@ -369,11 +415,11 @@ const server = http.createServer(async (req, res) => {
       const categoryId = String(u.searchParams.get('categoryId') || '');
 
       try {
-        const catalog = await catalogFor(access.sourceUrl);
+        const catalog = await sourceCatalog(access.sourceUrl, kind);
         return json(res, 200, {
           active: true,
           sourceReady: true,
-          items: categoryItems(catalog, kind, categoryId)
+          items: sourceCategoryItems(catalog, kind, categoryId)
         });
       } catch (error) {
         console.error('catalog.items', error?.message || error);
@@ -410,11 +456,11 @@ const server = http.createServer(async (req, res) => {
       }
 
       try {
-        const catalog = await catalogFor(access.sourceUrl);
+        const catalog = await sourceCatalog(access.sourceUrl, kind);
         return json(res, 200, {
           active: true,
           sourceReady: true,
-          items: searchCatalog(catalog, kind, query)
+          items: sourceSearch(catalog, kind, query)
         });
       } catch (error) {
         console.error('catalog.search', error?.message || error);
@@ -441,8 +487,8 @@ const server = http.createServer(async (req, res) => {
       const seriesId = String(u.searchParams.get('seriesId') || '');
 
       try {
-        const catalog = await catalogFor(access.sourceUrl);
-        const seasons = seriesSeasons(catalog, seriesId);
+        const catalog = await sourceCatalog(access.sourceUrl, 'series');
+        const seasons = await sourceSeriesSeasons(catalog, seriesId);
         if (!seasons) return json(res, 404, { error: 'Série não encontrada' });
         return json(res, 200, {
           active: true,
@@ -483,11 +529,11 @@ const server = http.createServer(async (req, res) => {
           data.settings = { ...(data.settings || {}), defaultSourceUrl };
           store.audit('settings.m3u', defaultSourceUrl ? 'Lista M3U principal atualizada' : 'Lista M3U principal removida');
         });
-        if (previous) clearCatalogCache(previous);
+        if (previous) clearSourceCache(previous);
         if (defaultSourceUrl) {
-          clearCatalogCache(defaultSourceUrl);
+          clearSourceCache(defaultSourceUrl);
           // Pré-carrega o catálogo em segundo plano para o app abrir as categorias mais rápido.
-          catalogFor(defaultSourceUrl).catch(error => console.error('Pré-carga M3U:', error.message));
+          sourceCatalog(defaultSourceUrl, 'series').catch(error => console.error('Pré-carga catálogo:', error.message));
         }
         return json(res, 200, { ok: true, settings: store.data.settings });
       }
@@ -496,7 +542,7 @@ const server = http.createServer(async (req, res) => {
         const b = await body(req);
         const sourceUrl = cleanUrl(b.sourceUrl || store.data.settings?.defaultSourceUrl || '');
         if (!isM3uUrl(sourceUrl)) return json(res, 400, { error: 'Informe primeiro uma URL M3U válida.' });
-        const catalog = await catalogFor(sourceUrl, true);
+        const catalog = await sourceCatalog(sourceUrl, 'series', true);
         return json(res, 200, { ok: true, stats: catalog.stats });
       }
 
@@ -546,8 +592,8 @@ const server = http.createServer(async (req, res) => {
           });
           store.audit('client.update', `${c.name || 'Cliente'} ${c.mac}`);
         });
-        if (oldSource && oldSource !== sourceUrl) clearCatalogCache(oldSource);
-        if (sourceUrl) clearCatalogCache(sourceUrl);
+        if (oldSource && oldSource !== sourceUrl) clearSourceCache(oldSource);
+        if (sourceUrl) clearSourceCache(sourceUrl);
         return json(res, 200, publicClient(store.data.clients.find(c => c.id === match[1])));
       }
 
@@ -575,4 +621,22 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(config.port, () => console.log(`LPSM Filmes & Séries painel M3U em :${config.port}`));
+server.listen(config.port, () => {
+  console.log(`LPSM Filmes & Séries painel M3U em :${config.port}`);
+
+  // No Render Free, o serviço pode acordar sem cache em memória.
+  // Pré-carrega apenas o índice leve de séries; episódios Xtream são
+  // buscados somente quando a série é aberta.
+  const defaultSource = cleanUrl(store.data.settings?.defaultSourceUrl || '');
+  if (defaultSource) {
+    setTimeout(() => {
+      sourceCatalog(defaultSource, 'series')
+        .then(catalog => {
+          console.log(`Catálogo de séries pronto: ${catalog.stats?.series || 0} séries`);
+        })
+        .catch(error => {
+          console.error('Pré-carga inicial:', error?.message || error);
+        });
+    }, 1200);
+  }
+});

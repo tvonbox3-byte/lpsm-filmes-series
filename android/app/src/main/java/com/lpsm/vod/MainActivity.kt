@@ -220,6 +220,28 @@ class MainActivity: Activity() {
 
     private fun verifyAndLoad() {
         b.progress.visibility = View.VISIBLE
+
+        // Se já existe ativação + catálogo no aparelho, abre na hora.
+        // Isso evita esperar o Render Free "acordar" toda vez que o app abre.
+        val cachedActivation = DeviceApi.fastCachedActivation(this)
+        val cachedCatalog = api.hasCachedCategories(modeSeries)
+
+        if (cachedActivation?.active == true && cachedCatalog) {
+            b.status.text = "Abrindo catálogo salvo..."
+            updateTabs()
+            loadCategories()
+
+            // Atualiza ativação/servidor em segundo plano, sem travar a Home.
+            pool.execute {
+                try {
+                    DeviceApi.heartbeat(this)
+                    DeviceApi.fetchActivation(this)
+                    api.prefetchHome()
+                } catch (_: Exception) { }
+            }
+            return
+        }
+
         b.status.text = "Preparando seu catálogo..."
         pool.execute {
             try {
@@ -229,7 +251,6 @@ class MainActivity: Activity() {
                     if (result.active) {
                         updateTabs()
                         loadCategories()
-                        // Deixa as primeiras categorias prontas no cache sem travar a tela.
                         pool.execute { api.prefetchHome() }
                     } else {
                         b.progress.visibility = View.GONE
