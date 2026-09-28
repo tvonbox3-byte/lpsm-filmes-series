@@ -3,14 +3,14 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@color/bg"
-    android:paddingStart="22dp"
-    android:paddingEnd="22dp"
-    android:paddingTop="14dp"
-    android:paddingBottom="14dp">
+    android:paddingStart="18dp"
+    android:paddingEnd="18dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="54dp"
         android:gravity="center_vertical">
 
         <TextView
@@ -21,12 +21,12 @@
             android:text="LPSM FILMES &amp; SÉRIES"
             android:textColor="@color/text"
             android:textStyle="bold"
-            android:textSize="25sp" />
+            android:textSize="23sp" />
 
         <Button
             android:id="@+id/moviesTab"
-            android:layout_width="130dp"
-            android:layout_height="48dp"
+            android:layout_width="116dp"
+            android:layout_height="44dp"
             android:text="FILMES"
             android:focusable="true"
             android:background="@drawable/nav_button_bg"
@@ -34,9 +34,9 @@
 
         <Button
             android:id="@+id/seriesTab"
-            android:layout_width="130dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
+            android:layout_width="116dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="7dp"
             android:text="SÉRIES"
             android:focusable="true"
             android:background="@drawable/nav_button_bg"
@@ -44,9 +44,9 @@
 
         <Button
             android:id="@+id/settingsBtn"
-            android:layout_width="130dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
+            android:layout_width="116dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="7dp"
             android:text="ATIVAÇÃO"
             android:focusable="true"
             android:background="@drawable/nav_button_bg"
@@ -55,10 +55,17 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="190dp"
+        android:layout_height="128dp"
         android:orientation="horizontal"
         android:background="@drawable/hero_bg"
-        android:padding="18dp">
+        android:padding="12dp">
+
+        <ImageView
+            android:id="@+id/heroPoster"
+            android:layout_width="76dp"
+            android:layout_height="104dp"
+            android:scaleType="centerCrop"
+            android:background="@drawable/poster_placeholder" />
 
         <LinearLayout
             android:layout_width="0dp"
@@ -66,7 +73,7 @@
             android:layout_weight="1"
             android:orientation="vertical"
             android:gravity="center_vertical"
-            android:paddingEnd="20dp">
+            android:paddingStart="17dp">
 
             <TextView
                 android:id="@+id/heroTitle"
@@ -75,7 +82,7 @@
                 android:text="Escolha um título"
                 android:textColor="@color/text"
                 android:textStyle="bold"
-                android:textSize="28sp"
+                android:textSize="24sp"
                 android:maxLines="2"
                 android:ellipsize="end" />
 
@@ -83,66 +90,72 @@
                 android:id="@+id/heroMeta"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="6dp"
                 android:text="Navegue pelas capas com o controle remoto"
                 android:textColor="@color/muted"
-                android:textSize="16sp" />
+                android:textSize="14sp" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:text="Use as setas para navegar e OK para abrir"
+                android:layout_marginTop="5dp"
+                android:text="← → ↑ ↓ para navegar  •  OK para abrir"
                 android:textColor="@color/text"
-                android:textSize="14sp" />
+                android:textSize="12sp" />
         </LinearLayout>
-
-        <ImageView
-            android:id="@+id/heroPoster"
-            android:layout_width="125dp"
-            android:layout_height="168dp"
-            android:scaleType="centerCrop"
-            android:background="@drawable/poster_placeholder" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/sectionTitle"
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="Filmes"
-        android:textColor="@color/text"
-        android:textStyle="bold"
-        android:textSize="20sp" />
+        android:layout_height="48dp"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/sectionTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Filmes"
+            android:textColor="@color/text"
+            android:textStyle="bold"
+            android:textSize="19sp" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="390dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/muted"
+            android:textSize="12sp" />
+    </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/categories"
         android:layout_width="match_parent"
-        android:layout_height="58dp"
+        android:layout_height="52dp"
         android:clipToPadding="false"
         android:paddingStart="2dp"
         android:paddingEnd="12dp" />
 
-    <TextView
-        android:id="@+id/status"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="@color/muted"
-        android:textSize="13sp"
-        android:paddingTop="2dp"
-        android:paddingBottom="6dp" />
-
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:layout_marginTop="3dp">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/grid"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:padding="4dp" />
+            android:paddingStart="2dp"
+            android:paddingEnd="2dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="12dp"
+            android:scrollbars="vertical" />
 
         <ProgressBar
             android:id="@+id/progress"

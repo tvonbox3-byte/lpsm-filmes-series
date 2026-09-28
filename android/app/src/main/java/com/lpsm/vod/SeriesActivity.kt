@@ -39,7 +39,7 @@ class SeriesActivity : Activity() {
 
         b.seriesTitle.text = name
         b.seriesPoster.load(image) { crossfade(true) }
-        b.seriesSubtitle.text = "Carregando temporadas e episódios..."
+        b.seriesSubtitle.text = "Carregando temporadas..."
 
         seasonsAdapter = SeasonAdapter(
             onSelected = { showSeason(it, focusEpisodes = false) },

@@ -40,6 +40,39 @@ function episodeInfo(name) {
   if (onlyEpisode) return { season: 1, episode: Number(onlyEpisode[1]) || 1, marker: onlyEpisode[0] };
   return null;
 }
+function seriesKey(value) {
+  return lower(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(?:temporada|season)\s*\d{1,3}\b/ig, ' ')
+    .replace(/\b(?:s|t)\s*\d{1,3}\b/ig, ' ')
+    .replace(/[\[\](){}._|:\-–—]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function cleanEpisodeTitle(name, ep, seriesName) {
+  const original = norm(name);
+  if (!ep?.marker) return `Episódio ${ep?.episode || 1}`;
+
+  const foldedOriginal = lower(original);
+  const foldedMarker = lower(ep.marker);
+  const markerIndex = foldedOriginal.indexOf(foldedMarker);
+
+  if (markerIndex >= 0) {
+    let after = original
+      .slice(markerIndex + ep.marker.length)
+      .replace(/^[\s._|:\-–—[\]()]+/g, '')
+      .trim();
+
+    if (after && lower(after) !== lower(seriesName)) {
+      return after;
+    }
+  }
+
+  return `Episódio ${ep.episode || 1}`;
+}
+
 function cleanSeriesName(name, ep) {
   const original = norm(name);
   if (!ep?.marker) return original;
@@ -171,7 +204,7 @@ async function parseM3u(url) {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'user-agent': 'LPSM-VOD-Catalog/1.4.1',
+        'user-agent': 'LPSM-VOD-Catalog/1.4.2',
         'accept': 'application/x-mpegURL,text/plain,*/*'
       }
     });
@@ -240,9 +273,15 @@ async function parseM3u(url) {
 
       const ep = episodeInfo(meta.name) || { season: 1, episode: 1, marker: '' };
       const seriesName = cleanSeriesName(meta.name, ep);
+      const normalizedSeriesKey = seriesKey(seriesName) || lower(seriesName);
       const category = makeCategory('series', meta.group);
       seriesCategories.set(category.id, category);
-      const seriesId = hash(`series|${category.name}|${seriesName}`);
+
+      // O ID NÃO usa mais a categoria. Assim:
+      // "Outlander - Temporada 1" e "Outlander - Temporada 2"
+      // viram UMA série com botões Temporada 1, Temporada 2 etc.
+      const seriesId = hash(`series|${normalizedSeriesKey}`);
+
       let series = seriesIndex.get(seriesId);
       if (!series) {
         series = {
@@ -253,19 +292,27 @@ async function parseM3u(url) {
           seasons: new Map()
         };
         seriesIndex.set(seriesId, series);
-        const list = getOrCreate(seriesByCategory, category.id, () => []);
-        list.push(series);
       } else if (!series.image && meta.logo) {
         series.image = meta.logo;
       }
+
+      // A mesma série pode aparecer em várias categorias da M3U,
+      // mas sem duplicar a capa dentro da mesma categoria.
+      const categoryList = getOrCreate(seriesByCategory, category.id, () => []);
+      if (!categoryList.some(x => x.id === seriesId)) {
+        categoryList.push(series);
+      }
+
       const eps = getOrCreate(series.seasons, ep.season, () => []);
-      eps.push({
-        id: hash(`episode|${stream.url}`),
-        title: meta.name,
-        number: ep.episode,
-        url: stream.url,
-        headers: stream.headers
-      });
+      if (!eps.some(x => x.url === stream.url)) {
+        eps.push({
+          id: hash(`episode|${stream.url}`),
+          title: cleanEpisodeTitle(meta.name, ep, seriesName),
+          number: ep.episode,
+          url: stream.url,
+          headers: stream.headers
+        });
+      }
     };
 
     for await (const chunk of response.body) {

@@ -103,7 +103,7 @@ object UpdateManager {
             c.useCaches = false
             c.connectTimeout = 10_000
             c.readTimeout = 15_000
-            c.setRequestProperty("User-Agent", "LPSM-VOD-Updater/1.3.1")
+            c.setRequestProperty("User-Agent", "LPSM-VOD-Updater/1.4.2")
             c.setRequestProperty("Cache-Control", "no-cache, no-store, max-age=0")
             c.setRequestProperty("Pragma", "no-cache")
             c.setRequestProperty("Accept", "application/json")
@@ -206,7 +206,7 @@ object UpdateManager {
                     c.useCaches = false
                     c.connectTimeout = 15_000
                     c.readTimeout = 120_000
-                    c.setRequestProperty("User-Agent", "LPSM-VOD-Updater/1.3.1")
+                    c.setRequestProperty("User-Agent", "LPSM-VOD-Updater/1.4.2")
                     c.setRequestProperty("Cache-Control", "no-cache")
                     c.setRequestProperty("Accept", "application/vnd.android.package-archive,*/*")
 

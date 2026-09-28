@@ -17,6 +17,11 @@ class PosterAdapter(
 ) : RecyclerView.Adapter<PosterAdapter.VH>() {
 
     private var items = listOf<PosterItem>()
+    private var spanCount = 1
+
+    fun setSpanCount(value: Int) {
+        spanCount = value.coerceAtLeast(1)
+    }
 
     fun submit(v: List<PosterItem>) {
         items = v
@@ -32,6 +37,7 @@ class PosterAdapter(
         val item = items[position]
 
         h.b.name.text = item.name
+        h.b.poster.contentDescription = item.name
         h.b.poster.load(item.image) {
             crossfade(true)
         }
@@ -42,14 +48,23 @@ class PosterAdapter(
             v.animate()
                 .scaleX(if (focused) 1.075f else 1f)
                 .scaleY(if (focused) 1.075f else 1f)
-                .setDuration(120)
+                .setDuration(110)
                 .start()
-            v.translationZ = if (focused) 16f else 0f
+
+            v.translationZ = if (focused) 18f else 0f
+            h.b.name.isSelected = focused
+
             if (focused) onFocus(item)
         }
 
         h.b.root.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+            val p = h.bindingAdapterPosition
+            if (
+                event.action == KeyEvent.ACTION_DOWN &&
+                keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+                p != RecyclerView.NO_POSITION &&
+                p < spanCount
+            ) {
                 onUp(item)
                 true
             } else {

@@ -3,22 +3,22 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@color/bg"
-    android:paddingStart="26dp"
-    android:paddingEnd="26dp"
-    android:paddingTop="18dp"
-    android:paddingBottom="18dp">
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp"
+    android:paddingTop="13dp"
+    android:paddingBottom="13dp">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="185dp"
+        android:layout_height="158dp"
         android:orientation="horizontal"
         android:background="@drawable/hero_bg"
-        android:padding="16dp">
+        android:padding="13dp">
 
         <ImageView
             android:id="@+id/seriesPoster"
-            android:layout_width="112dp"
-            android:layout_height="153dp"
+            android:layout_width="96dp"
+            android:layout_height="132dp"
             android:scaleType="centerCrop"
             android:background="@drawable/poster_placeholder" />
 
@@ -28,7 +28,7 @@
             android:layout_weight="1"
             android:orientation="vertical"
             android:gravity="center_vertical"
-            android:paddingStart="22dp">
+            android:paddingStart="19dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -36,16 +36,16 @@
                 android:text="SÉRIE"
                 android:textColor="@color/accent"
                 android:textStyle="bold"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
 
             <TextView
                 android:id="@+id/seriesTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="5dp"
+                android:layout_marginTop="3dp"
                 android:textColor="@color/text"
                 android:textStyle="bold"
-                android:textSize="30sp"
+                android:textSize="27sp"
                 android:maxLines="2"
                 android:ellipsize="end" />
 
@@ -53,34 +53,34 @@
                 android:id="@+id/seriesSubtitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="5dp"
                 android:textColor="@color/muted"
-                android:textSize="15sp" />
+                android:textSize="14sp" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="← → muda a temporada   •   ↓ episódios   •   OK reproduz"
+                android:layout_marginTop="7dp"
+                android:text="Escolha Temporada 1, Temporada 2...  •  ↓ episódios  •  OK reproduz"
                 android:textColor="@color/text"
-                android:textSize="14sp" />
+                android:textSize="13sp" />
         </LinearLayout>
     </LinearLayout>
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="13dp"
+        android:layout_marginTop="10dp"
         android:text="TEMPORADAS"
         android:textColor="@color/text"
         android:textStyle="bold"
-        android:textSize="16sp" />
+        android:textSize="17sp" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/seasons"
         android:layout_width="match_parent"
-        android:layout_height="62dp"
-        android:layout_marginTop="4dp"
+        android:layout_height="58dp"
+        android:layout_marginTop="3dp"
         android:focusable="false"
         android:descendantFocusability="afterDescendants"
         android:clipToPadding="false"
@@ -94,13 +94,13 @@
         android:text="Episódios"
         android:textColor="@color/text"
         android:textStyle="bold"
-        android:textSize="19sp" />
+        android:textSize="18sp" />
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="6dp">
+        android:layout_marginTop="5dp">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/episodes"

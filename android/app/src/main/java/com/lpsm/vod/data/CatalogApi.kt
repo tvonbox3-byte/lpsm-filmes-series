@@ -15,7 +15,7 @@ import java.security.MessageDigest
 
 class CatalogApi(private val context: Context) {
     private val mac get() = DeviceApi.deviceCode(context)
-    private val cacheDir by lazy { File(context.filesDir, "vod_catalog_cache_v141").apply { mkdirs() } }
+    private val cacheDir by lazy { File(context.filesDir, "vod_catalog_cache_v142").apply { mkdirs() } }
     private val legacyCacheDir by lazy { File(context.filesDir, "vod_catalog_cache").apply { mkdirs() } }
     private val cacheTtlMs = 24L * 60L * 60L * 1000L
 
@@ -51,7 +51,7 @@ class CatalogApi(private val context: Context) {
             c.connectTimeout = 8000
             c.readTimeout = 60000
             c.setRequestProperty("Accept", "application/json")
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.4.1")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.4.2")
             val raw = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
             val root = JSONObject(raw.ifBlank { "{}" })

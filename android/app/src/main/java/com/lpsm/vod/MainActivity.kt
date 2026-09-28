@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.widget.EditText
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import coil3.load
 import coil3.request.crossfade
@@ -62,11 +63,21 @@ class MainActivity: Activity() {
         b.categories.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         b.categories.adapter = cats
 
-        // Fileira horizontal de capas, adequada para controle remoto de TV Box.
-        b.grid.layoutManager =
-            LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        // Grade estilo catálogo de streaming: várias capas visíveis ao mesmo tempo.
+        val widthDp = resources.configuration.screenWidthDp
+        val columns = when {
+            widthDp >= 1200 -> 8
+            widthDp >= 1000 -> 7
+            widthDp >= 800 -> 6
+            widthDp >= 600 -> 5
+            else -> 3
+        }
+
+        posters.setSpanCount(columns)
+        b.grid.layoutManager = GridLayoutManager(this, columns)
         b.grid.adapter = posters
         b.grid.setHasFixedSize(true)
+        b.grid.setItemViewCacheSize(columns * 3)
 
         b.moviesTab.setOnClickListener { switchMode(false) }
         b.seriesTab.setOnClickListener { switchMode(true) }
