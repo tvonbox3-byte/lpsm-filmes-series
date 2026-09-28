@@ -8,7 +8,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.widget.EditText
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import coil3.load
 import coil3.request.crossfade
@@ -27,10 +26,14 @@ import org.json.JSONObject
 class MainActivity: Activity() {
     private lateinit var b: ActivityMainBinding
     private val pool = Executors.newFixedThreadPool(4)
-    private val cats = CategoryAdapter { selectCategory(it) }
+    private val cats = CategoryAdapter(
+        onClick = { selectCategory(it) },
+        onDown = { loadCategory(it, focusGrid = true) }
+    )
     private val posters = PosterAdapter(
         onClick = { openItem(it) },
-        onFocus = { showHero(it) }
+        onFocus = { showHero(it) },
+        onUp = { focusSelectedCategory() }
     )
     private var modeSeries = false
     private lateinit var api: CatalogApi
@@ -59,12 +62,9 @@ class MainActivity: Activity() {
         b.categories.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         b.categories.adapter = cats
 
-        val columns = when {
-            resources.configuration.smallestScreenWidthDp >= 720 -> 7
-            resources.configuration.smallestScreenWidthDp >= 600 -> 6
-            else -> 4
-        }
-        b.grid.layoutManager = GridLayoutManager(this, columns)
+        // Fileira horizontal de capas, adequada para controle remoto de TV Box.
+        b.grid.layoutManager =
+            LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         b.grid.adapter = posters
         b.grid.setHasFixedSize(true)
 
@@ -72,6 +72,20 @@ class MainActivity: Activity() {
         b.seriesTab.setOnClickListener { switchMode(true) }
         b.settingsBtn.text = "ATIVAÇÃO"
         b.settingsBtn.setOnClickListener { startActivityForResult(Intent(this, SetupActivity::class.java), 9) }
+
+        val downToCategories = View.OnKeyListener { _, keyCode, event ->
+            if (event.action == android.view.KeyEvent.ACTION_DOWN &&
+                keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+            ) {
+                focusSelectedCategory()
+                true
+            } else {
+                false
+            }
+        }
+        b.moviesTab.setOnKeyListener(downToCategories)
+        b.seriesTab.setOnKeyListener(downToCategories)
+        b.settingsBtn.setOnKeyListener(downToCategories)
 
         verifyAndLoad()
         // Verifica poucos segundos após abrir e continua verificando enquanto o app estiver em uso.
@@ -200,6 +214,16 @@ class MainActivity: Activity() {
                 }
             }
         }
+    }
+
+    private fun focusSelectedCategory() {
+        val pos = cats.selectedPosition().coerceAtLeast(0)
+        b.categories.scrollToPosition(pos)
+        b.categories.postDelayed({
+            b.categories.findViewHolderForAdapterPosition(pos)
+                ?.itemView
+                ?.requestFocus()
+        }, 60L)
     }
 
     private fun showHero(item: PosterItem) {

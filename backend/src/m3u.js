@@ -6,7 +6,10 @@ const cache = new Map();
 
 const hash = value => createHash('sha1').update(String(value || '')).digest('hex').slice(0, 20);
 const norm = value => String(value || '').trim();
-const lower = value => norm(value).toLocaleLowerCase('pt-BR');
+const fold = value => norm(value)
+  .normalize('NFD')
+  .replace(/\p{Diacritic}/gu, '')
+  .toLocaleLowerCase('pt-BR');
 
 function attrs(line) {
   const out = {};
@@ -25,30 +28,58 @@ function displayName(extinf, a) {
 function episodeInfo(name) {
   const n = norm(name);
   const patterns = [
-    /\bS\s*(\d{1,3})\s*[.\-_ ]*E\s*(\d{1,4})\b/i,
-    /\bT\s*(\d{1,3})\s*[.\-_ ]*E\s*(\d{1,4})\b/i,
-    /\b(\d{1,3})\s*x\s*(\d{1,4})\b/i,
-    /\b(?:TEMP(?:ORADA)?|SEASON)\s*(\d{1,3})\D+(?:EP(?:IS[ÓO]DIO|ISODE)?|E)\s*(\d{1,4})\b/i,
-    /\b(\d{1,3})\s*[ªº]?\s*TEMPORADA\D+(?:EP(?:IS[ÓO]DIO)?|E)\s*(\d{1,4})\b/i
+    // S01E02 / S1 E2
+    { re: /\bS\s*(\d{1,3})\s*[.\-_ ]*E\s*(\d{1,4})\b/i, strong: true },
+    // T01E02
+    { re: /\bT\s*(\d{1,3})\s*[.\-_ ]*E\s*(\d{1,4})\b/i, strong: true },
+    // 1x02. O episódio exige pelo menos 2 dígitos para NÃO confundir nomes como "4x4".
+    { re: /\b(\d{1,2})\s*x\s*(\d{2,4})\b/i, strong: true },
+    // Temporada 1 Episódio 2 / Season 1 Episode 2
+    { re: /\b(?:TEMP(?:ORADA)?|SEASON)\s*(\d{1,3})\D+(?:EP(?:IS[ÓO]DIO|ISODE)?|E)\s*(\d{1,4})\b/i, strong: true },
+    // 1ª Temporada Ep 2
+    { re: /\b(\d{1,3})\s*[ªº]?\s*TEMPORADA\D+(?:EP(?:IS[ÓO]DIO|ISODE)?|E)\s*(\d{1,4})\b/i, strong: true }
   ];
+
   for (const p of patterns) {
-    const m = n.match(p);
-    if (m) return { season: Number(m[1]) || 1, episode: Number(m[2]) || 1, marker: m[0] };
+    const m = n.match(p.re);
+    if (m) {
+      return {
+        season: Number(m[1]) || 1,
+        episode: Number(m[2]) || 1,
+        marker: m[0],
+        strong: p.strong
+      };
+    }
   }
-  // Alguns provedores usam apenas EP 12. Nesse caso tratamos como temporada 1.
+
+  // "EP 12" sozinho só é aceito como episódio quando a categoria/URL já indica série.
   const onlyEpisode = n.match(/\b(?:EP(?:IS[ÓO]DIO|ISODE)?|E)\s*[.\-_ ]*(\d{1,4})\b/i);
-  if (onlyEpisode) return { season: 1, episode: Number(onlyEpisode[1]) || 1, marker: onlyEpisode[0] };
+  if (onlyEpisode) {
+    return {
+      season: 1,
+      episode: Number(onlyEpisode[1]) || 1,
+      marker: onlyEpisode[0],
+      strong: false
+    };
+  }
+
   return null;
 }
+
 function cleanSeriesName(name, ep) {
   const original = norm(name);
   if (!ep?.marker) return original;
 
-  const index = original.toLocaleLowerCase('pt-BR').indexOf(ep.marker.toLocaleLowerCase('pt-BR'));
-  // O padrão mais comum é: "Nome da Série S01E02 - Título do episódio".
-  // Usar apenas a parte anterior ao marcador evita criar uma série diferente para cada episódio.
+  const originalFold = fold(original);
+  const markerFold = fold(ep.marker);
+  const index = originalFold.indexOf(markerFold);
+
+  // "Nome da Série S01E02 - Episódio"
   if (index > 0) {
-    const before = original.slice(0, index).replace(/[\s._|:\-–—]+$/g, '').trim();
+    const before = original
+      .slice(0, index)
+      .replace(/[\s._|:\-–—[\]()]+$/g, '')
+      .trim();
     if (before.length >= 2) return before;
   }
 
@@ -56,26 +87,77 @@ function cleanSeriesName(name, ep) {
   value = value
     .replace(/\b(?:TEMPORADA|SEASON)\s*\d{1,3}\b/ig, ' ')
     .replace(/\b(?:EPIS[ÓO]DIO|EPISODE|EP)\s*\d{1,4}\b/ig, ' ')
-    .replace(/[\s._|:\-–—]+$/g, '')
+    .replace(/[\s._|:\-–—[\]()]+$/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
+
   return value || original;
 }
+
+function cleanEpisodeTitle(name, ep, seriesName) {
+  const original = norm(name);
+  if (!ep?.marker) return original;
+
+  const originalFold = fold(original);
+  const markerFold = fold(ep.marker);
+  const index = originalFold.indexOf(markerFold);
+
+  if (index >= 0) {
+    const after = original
+      .slice(index + ep.marker.length)
+      .replace(/^[\s._|:\-–—[\]()]+/g, '')
+      .trim();
+    if (after.length >= 2 && fold(after) !== fold(seriesName)) return after;
+  }
+
+  return `Episódio ${ep.episode || 1}`;
+}
+
+function isSeriesGroup(group) {
+  const g = fold(group);
+  return /\b(series?|seriados?|temporadas?|novelas?|doramas?|animes?|tv\s*shows?)\b/i.test(g);
+}
+
+function isMovieGroup(group) {
+  const g = fold(group);
+  return /\b(filmes?|movies?|cinema|vod|lancamentos?|catalogo\s*vod)\b/i.test(g);
+}
+
+function isLiveGroup(group) {
+  const g = fold(group);
+  return /\b(canais?|ao\s*vivo|live|tv\s*aberta|abertos?|esportes?|sports?|futebol|noticias?|news|radios?|ppv|24h|24\s*horas|bbb|fazenda|premiere|combate)\b/i.test(g);
+}
+
 function classify(url, group, name) {
-  const u = lower(url);
-  const g = lower(group);
-  const ext = (u.split('?')[0].match(/\.([a-z0-9]{2,5})$/i)?.[1] || '').toLowerCase();
+  const u = fold(url);
+  const cleanUrl = u.split('?')[0];
+  const ext = (cleanUrl.match(/\.([a-z0-9]{2,5})$/i)?.[1] || '').toLowerCase();
   const ep = episodeInfo(name);
 
-  if (u.includes('/series/') || ep || /\b(s[ée]ries?|temporadas?|novelas?)\b/i.test(g)) return 'series';
-  if (u.includes('/movie/') || /\b(filmes?|cinema|vod|lan[çc]amentos?)\b/i.test(g)) return 'movie';
+  // Caminhos Xtream são os sinais mais confiáveis.
+  if (u.includes('/series/')) return 'series';
+  if (u.includes('/movie/')) return 'movie';
+  if (u.includes('/live/')) return 'live';
+
+  // Depois usamos a categoria.
+  if (isSeriesGroup(group)) return 'series';
+  if (isMovieGroup(group)) return 'movie';
+  if (isLiveGroup(group)) return 'live';
+
+  // Marcadores fortes de episódio: S01E02, T01E02, 1x02 etc.
+  if (ep?.strong) return 'series';
+
+  // TS e M3U8 sem indicação explícita de VOD são tratados como canal.
+  if (ext === 'ts' || ext === 'm3u8') return 'live';
+
+  // Arquivos de vídeo diretos podem ser filmes quando não há sinal de canal.
   if (['mp4','mkv','avi','mov','m4v','webm','mpg','mpeg'].includes(ext)) return 'movie';
-  if (u.includes('/live/') || ext === 'm3u8' || ext === 'ts') return 'live';
+
   return 'other';
 }
 
 function makeCategory(kind, name) {
-  const title = norm(name) || 'Sem categoria';
+  const title = norm(name) || (kind === 'series' ? 'Séries' : 'Filmes');
   return { id: hash(`${kind}|${title}`), name: title };
 }
 
@@ -134,7 +216,7 @@ function applyDirective(line, pending) {
     try {
       const obj = JSON.parse(raw);
       for (const [k, v] of Object.entries(obj)) setHeader(pending.headers, k, v);
-    } catch { /* ignora EXTHTTP inválido */ }
+    } catch { }
     return true;
   }
   return false;
@@ -152,15 +234,17 @@ function splitUrlAndHeaders(rawUrl, inheritedHeaders = {}) {
 async function parseM3u(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
+
   try {
     const response = await fetch(url, {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'user-agent': 'LPSM-VOD-Catalog/1.2.1',
+        'user-agent': 'LPSM-VOD-Catalog/1.4',
         'accept': 'application/x-mpegURL,text/plain,*/*'
       }
     });
+
     if (!response.ok) throw new Error(`A lista M3U respondeu ${response.status}`);
     if (!response.body) throw new Error('A lista M3U não retornou conteúdo');
 
@@ -168,6 +252,9 @@ async function parseM3u(url) {
     const seriesCategories = new Map();
     const moviesByCategory = new Map();
     const seriesByCategory = new Map();
+
+    // Índice GLOBAL por nome da série. Assim temporadas espalhadas em categorias
+    // diferentes continuam abrindo dentro da mesma série.
     const seriesIndex = new Map();
 
     let pending = null;
@@ -179,6 +266,7 @@ async function parseM3u(url) {
     const processLine = raw => {
       const line = raw.trim();
       if (!line) return;
+
       if (line.startsWith('#EXTINF')) {
         const a = attrs(line);
         pending = {
@@ -189,29 +277,44 @@ async function parseM3u(url) {
         };
         return;
       }
+
       if (line.startsWith('#EXTGRP:')) {
         fallbackGroup = norm(line.slice('#EXTGRP:'.length));
         if (pending && !pending.group) pending.group = fallbackGroup;
         return;
       }
+
       if (line.startsWith('#')) {
-        if (applyDirective(line, pending)) return;
+        applyDirective(line, pending);
         return;
       }
-      if (!/^https?:\/\//i.test(line)) { pending = null; return; }
+
+      if (!/^https?:\/\//i.test(line)) {
+        pending = null;
+        return;
+      }
+
       if (!pending) return;
       if (videoCount >= MAX_ITEMS) return;
 
       const meta = pending;
       pending = null;
+
       const stream = splitUrlAndHeaders(line, meta.headers);
       const kind = classify(stream.url, meta.group, meta.name);
-      if (kind === 'live' || kind === 'other') { ignored++; return; }
+
+      // IMPORTANTE: live e outros formatos nunca entram no catálogo do app.
+      if (kind !== 'movie' && kind !== 'series') {
+        ignored++;
+        return;
+      }
+
       videoCount++;
 
       if (kind === 'movie') {
         const category = makeCategory('movie', meta.group);
         movieCategories.set(category.id, category);
+
         const list = getOrCreate(moviesByCategory, category.id, () => []);
         list.push({
           id: hash(`movie|${stream.url}`),
@@ -224,11 +327,15 @@ async function parseM3u(url) {
         return;
       }
 
-      const ep = episodeInfo(meta.name) || { season: 1, episode: 1, marker: '' };
+      const parsedEpisode = episodeInfo(meta.name);
+      const ep = parsedEpisode || { season: 1, episode: 1, marker: '', strong: false };
       const seriesName = cleanSeriesName(meta.name, ep);
+      const seriesKey = fold(seriesName);
+      const seriesId = hash(`series|${seriesKey}`);
+
       const category = makeCategory('series', meta.group);
       seriesCategories.set(category.id, category);
-      const seriesId = hash(`series|${category.name}|${seriesName}`);
+
       let series = seriesIndex.get(seriesId);
       if (!series) {
         series = {
@@ -239,35 +346,49 @@ async function parseM3u(url) {
           seasons: new Map()
         };
         seriesIndex.set(seriesId, series);
-        const list = getOrCreate(seriesByCategory, category.id, () => []);
-        list.push(series);
       } else if (!series.image && meta.logo) {
         series.image = meta.logo;
       }
+
+      // A mesma série pode aparecer em mais de uma categoria.
+      const categorySeries = getOrCreate(seriesByCategory, category.id, () => []);
+      if (!categorySeries.some(x => x.id === seriesId)) {
+        categorySeries.push(series);
+      }
+
       const eps = getOrCreate(series.seasons, ep.season, () => []);
-      eps.push({
-        id: hash(`episode|${stream.url}`),
-        title: meta.name,
-        number: ep.episode,
-        url: stream.url,
-        headers: stream.headers
-      });
+
+      // Evita episódio duplicado no mesmo M3U.
+      if (!eps.some(x => x.url === stream.url)) {
+        eps.push({
+          id: hash(`episode|${stream.url}`),
+          title: cleanEpisodeTitle(meta.name, ep, seriesName),
+          number: ep.episode,
+          url: stream.url,
+          headers: stream.headers
+        });
+      }
     };
 
     for await (const chunk of response.body) {
       buffer += Buffer.from(chunk).toString('utf8');
       let idx;
+
       while ((idx = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, idx).replace(/\r$/, '');
         buffer = buffer.slice(idx + 1);
         processLine(line);
       }
+
       if (videoCount >= MAX_ITEMS) break;
     }
+
     if (buffer.trim() && videoCount < MAX_ITEMS) processLine(buffer);
 
     for (const series of seriesIndex.values()) {
-      for (const eps of series.seasons.values()) eps.sort((a,b) => (a.number || 0) - (b.number || 0));
+      for (const eps of series.seasons.values()) {
+        eps.sort((a, b) => (a.number || 0) - (b.number || 0));
+      }
     }
 
     return {
@@ -281,7 +402,9 @@ async function parseM3u(url) {
       stats: {
         movies: [...moviesByCategory.values()].reduce((n, x) => n + x.length, 0),
         series: seriesIndex.size,
-        episodes: [...seriesIndex.values()].reduce((n, s) => n + [...s.seasons.values()].reduce((m, e) => m + e.length, 0), 0),
+        episodes: [...seriesIndex.values()]
+          .reduce((n, s) => n + [...s.seasons.values()]
+            .reduce((m, e) => m + e.length, 0), 0),
         movieCategories: movieCategories.size,
         seriesCategories: seriesCategories.size,
         ignored,
@@ -297,13 +420,16 @@ async function parseM3u(url) {
 export async function catalogFor(sourceUrl, force = false) {
   const key = norm(sourceUrl);
   if (!/^https?:\/\//i.test(key)) throw new Error('URL M3U inválida');
+
   const existing = cache.get(key);
   if (!force && existing) {
     if (existing.promise) return existing.promise;
     if (Date.now() - existing.createdAt < CACHE_TTL_MS) return existing;
   }
+
   const promise = parseM3u(key);
   cache.set(key, { createdAt: Date.now(), promise });
+
   try {
     const catalog = await promise;
     cache.set(key, catalog);
@@ -320,14 +446,27 @@ export function clearCatalogCache(sourceUrl = '') {
 }
 
 export function categoryItems(catalog, kind, categoryId) {
-  if (kind === 'movie') return (catalog.moviesByCategory.get(categoryId) || []).map(x => ({ ...x }));
-  return (catalog.seriesByCategory.get(categoryId) || []).map(s => ({ id: s.id, name: s.name, image: s.image, isSeries: true }));
+  if (kind === 'movie') {
+    return (catalog.moviesByCategory.get(categoryId) || []).map(x => ({ ...x }));
+  }
+
+  return (catalog.seriesByCategory.get(categoryId) || [])
+    .map(s => ({
+      id: s.id,
+      name: s.name,
+      image: s.image,
+      isSeries: true
+    }));
 }
 
 export function seriesSeasons(catalog, seriesId) {
   const series = catalog.seriesIndex.get(seriesId);
   if (!series) return null;
+
   return [...series.seasons.entries()]
-    .sort((a,b) => a[0] - b[0])
-    .map(([number, episodes]) => ({ number, episodes: episodes.map(e => ({ ...e })) }));
+    .sort((a, b) => a[0] - b[0])
+    .map(([number, episodes]) => ({
+      number,
+      episodes: episodes.map(e => ({ ...e }))
+    }));
 }
