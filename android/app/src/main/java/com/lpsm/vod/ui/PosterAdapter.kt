@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import coil3.load
+import coil3.request.crossfade
 import com.lpsm.vod.databinding.ItemPosterBinding
 import com.lpsm.vod.model.PosterItem
 

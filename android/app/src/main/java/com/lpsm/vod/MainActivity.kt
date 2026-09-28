@@ -11,6 +11,7 @@ import android.widget.EditText
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import coil3.load
+import coil3.request.crossfade
 import com.lpsm.vod.data.CatalogApi
 import com.lpsm.vod.data.DeviceApi
 import com.lpsm.vod.databinding.ActivityMainBinding
