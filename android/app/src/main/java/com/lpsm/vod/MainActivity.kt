@@ -122,7 +122,7 @@ class MainActivity: Activity() {
             hint = if (modeSeries) "Pesquisar séries" else "Pesquisar filmes"
             isSingleLine = true
             textSize = 18f
-            selectAllOnFocus = true
+            setSelectAllOnFocus(true)
         }
 
         val dialog = AlertDialog.Builder(this)
