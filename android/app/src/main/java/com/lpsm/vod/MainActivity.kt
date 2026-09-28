@@ -36,6 +36,13 @@ class MainActivity: Activity() {
     private lateinit var api: CatalogApi
     private val pin = "0202"
     private val heartbeatHandler = Handler(Looper.getMainLooper())
+    private val updateHandler = Handler(Looper.getMainLooper())
+    private val updateCheck = object : Runnable {
+        override fun run() {
+            UpdateManager.check(this@MainActivity)
+            updateHandler.postDelayed(this, 5 * 60 * 1000L)
+        }
+    }
     private val heartbeat = object : Runnable {
         override fun run() {
             pool.execute { DeviceApi.heartbeat(this@MainActivity) }
@@ -67,7 +74,8 @@ class MainActivity: Activity() {
         b.settingsBtn.setOnClickListener { startActivityForResult(Intent(this, SetupActivity::class.java), 9) }
 
         verifyAndLoad()
-        UpdateManager.check(this)
+        // Verifica poucos segundos após abrir e continua verificando enquanto o app estiver em uso.
+        updateHandler.postDelayed(updateCheck, 2500L)
         heartbeatHandler.post(heartbeat)
     }
 
@@ -228,6 +236,15 @@ class MainActivity: Activity() {
         startActivity(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        UpdateManager.onResume(this)
+
+        // Segunda tentativa rápida ajuda TV Boxes que demoram para conectar ao Wi-Fi.
+        updateHandler.removeCallbacks(updateCheck)
+        updateHandler.postDelayed(updateCheck, 12_000L)
+    }
+
     override fun onActivityResult(r: Int, c: Int, d: Intent?) {
         super.onActivityResult(r,c,d)
         if (r == 9 && c == RESULT_OK) verifyAndLoad()
@@ -235,6 +252,7 @@ class MainActivity: Activity() {
 
     override fun onDestroy() {
         heartbeatHandler.removeCallbacksAndMessages(null)
+        updateHandler.removeCallbacksAndMessages(null)
         pool.shutdownNow()
         super.onDestroy()
     }

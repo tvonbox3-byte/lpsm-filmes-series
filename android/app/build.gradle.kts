@@ -7,12 +7,17 @@ android {
     namespace = "com.lpsm.vod"
     compileSdk = 35
 
+    val ciVersionCode = System.getenv("LPSM_VERSION_CODE")?.toIntOrNull()
+
     defaultConfig {
         applicationId = "com.lpsm.vod"
         minSdk = 21
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.3.0"
+
+        // No GitHub Actions, cada build recebe um versionCode crescente automaticamente.
+        // Assim até correções mantendo o mesmo versionName aparecem como atualização.
+        versionCode = ciVersionCode ?: 7
+        versionName = "1.3.1"
     }
 
     buildFeatures { viewBinding = true }
