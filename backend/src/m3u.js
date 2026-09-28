@@ -304,7 +304,7 @@ async function parseM3u(url) {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'user-agent': 'LPSM-VOD-Catalog/1.8.0',
+        'user-agent': 'LPSM-VOD-Catalog/1.8.3',
         'accept': 'application/x-mpegURL,text/plain,*/*'
       }
     });
@@ -414,8 +414,8 @@ async function parseM3u(url) {
           imageCandidates: new Map()
         };
         seriesIndex.set(seriesId, series);
-      } else if (!series.image && meta.logo) {
-        series.image = meta.logo;
+      } else if (!series.image && meta.image) {
+        series.image = meta.image;
       }
 
       getOrCreate(seriesIdsByCategory, category.id, () => new Set()).add(seriesId);

@@ -64,7 +64,7 @@ class PlayerActivity : Activity() {
             intent.getBooleanExtra("contentAdult", false)
 
         val headers = linkedMapOf<String, String>()
-        headers["User-Agent"] = "LPSM-VOD/1.8.2 (Android)"
+        headers["User-Agent"] = "LPSM-VOD/1.8.3 (Android)"
         headers["Accept"] = "*/*"
 
         intent.getStringExtra("headers")?.takeIf { it.isNotBlank() }?.let { raw ->

@@ -101,7 +101,7 @@ async function apiJson(source, action, extra = {}, timeoutMs = 35_000) {
 
   try {
     const headers = {
-      'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD/1.8.0',
+      'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD/1.8.3',
       'accept': 'application/json,*/*'
     };
     for (const [k, v] of Object.entries(source.headers)) {
@@ -123,6 +123,27 @@ async function apiJson(source, action, extra = {}, timeoutMs = 35_000) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+
+function normalizedSeriesKey(value) {
+  return lower(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(?:temporada|season)\s*\d{1,3}\b/ig, ' ')
+    .replace(/\b(?:s|t)\s*\d{1,3}\b/ig, ' ')
+    .replace(/[\[\](){}._|:\-–—]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function stableSeriesId(name) {
+  const key = normalizedSeriesKey(name) || lower(name);
+  return hash(`series|${key}`);
+}
+
+function legacyXtreamSeriesId(source, providerId) {
+  return hash(`xtream-series|${source.key}|${providerId}`);
 }
 
 function categoriesMap(raw, kind) {
@@ -213,11 +234,12 @@ async function ensureSeries(catalog, force = false) {
 
     if (categoryId === uncategorizedId) needsUncategorized = true;
 
-    const id = hash(`xtream-series|${catalog.source.key}|${providerId}`);
+    const seriesName = norm(row?.name) || `Série ${providerId}`;
+    const id = stableSeriesId(seriesName);
     const item = {
       id,
       providerId,
-      name: norm(row?.name) || `Série ${providerId}`,
+      name: seriesName,
       image: bestImage(row, true),
       isSeries: true
     };
@@ -399,7 +421,21 @@ function seriesDetailKey(catalog, seriesId) {
 }
 
 export async function xtreamSeriesSeasons(catalog, seriesId) {
-  const item = catalog.seriesIndex.get(seriesId);
+  let item = catalog.seriesIndex.get(seriesId);
+
+  // Compatibilidade com APK/cache anterior da 1.8.0/1.8.2.
+  // O ID antigo usava providerId; o novo usa o mesmo ID do parser M3U.
+  if (!item) {
+    for (const candidate of catalog.seriesIndex.values()) {
+      if (
+        legacyXtreamSeriesId(catalog.source, candidate.providerId) === seriesId
+      ) {
+        item = candidate;
+        break;
+      }
+    }
+  }
+
   if (!item) return null;
 
   const key = seriesDetailKey(catalog, item.providerId);
@@ -410,46 +446,140 @@ export async function xtreamSeriesSeasons(catalog, seriesId) {
     return cached.seasons;
   }
 
-  const detail = await apiJson(
-    catalog.source,
-    'get_series_info',
-    { series_id: item.providerId },
-    40_000
-  );
+  let detail;
+  let lastError;
 
-  const rawEpisodes = detail?.episodes;
-  const seasons = [];
-
-  if (rawEpisodes && typeof rawEpisodes === 'object') {
-    for (const [seasonKey, rawList] of Object.entries(rawEpisodes)) {
-      const list = Array.isArray(rawList) ? rawList : [];
-      const seasonNumber = Number(seasonKey) || Number(list[0]?.season) || 1;
-      const episodes = [];
-
-      for (let i = 0; i < list.length; i++) {
-        const ep = list[i] || {};
-        const providerEpisodeId = norm(ep.id || ep.stream_id);
-        if (!providerEpisodeId) continue;
-
-        const number = Number(ep.episode_num) || Number(ep.episode) || i + 1;
-        const ext = norm(ep.container_extension || ep?.info?.container_extension) || 'mp4';
-        const direct = norm(ep.direct_source || ep?.info?.direct_source);
-
-        episodes.push({
-          id: hash(`xtream-episode|${catalog.source.key}|${providerEpisodeId}`),
-          title: norm(ep.title) || norm(ep?.info?.title) || `Episódio ${number}`,
-          number,
-          url: direct || streamUrl(catalog.source, 'series', providerEpisodeId, ext),
-          headers: {}
-        });
+  // Alguns servidores Xtream falham esporadicamente no primeiro pedido.
+  // Repetimos somente o detalhe da série, sem recarregar 3.000+ capas.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      detail = await apiJson(
+        catalog.source,
+        'get_series_info',
+        { series_id: item.providerId },
+        45_000
+      );
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) {
+        await new Promise(resolve => setTimeout(resolve, 700));
       }
-
-      episodes.sort((a, b) => a.number - b.number);
-      if (episodes.length) seasons.push({ number: seasonNumber, episodes });
     }
   }
 
-  seasons.sort((a, b) => a.number - b.number);
+  if (!detail) throw lastError || new Error('Detalhes da série indisponíveis');
+
+  const seasonsMap = new Map();
+
+  const addEpisode = (rawEp, fallbackSeason, fallbackNumber) => {
+    const ep = rawEp || {};
+    const providerEpisodeId = norm(
+      ep.id ||
+      ep.stream_id ||
+      ep.episode_id ||
+      ep?.info?.id ||
+      ep?.info?.stream_id
+    );
+
+    if (!providerEpisodeId) return;
+
+    const seasonNumber =
+      Number(ep.season) ||
+      Number(ep.season_number) ||
+      Number(ep?.info?.season) ||
+      Number(fallbackSeason) ||
+      1;
+
+    const episodeNumber =
+      Number(ep.episode_num) ||
+      Number(ep.episode) ||
+      Number(ep.episode_number) ||
+      Number(ep?.info?.episode_num) ||
+      Number(ep?.info?.episode) ||
+      Number(fallbackNumber) ||
+      1;
+
+    const ext =
+      norm(
+        ep.container_extension ||
+        ep?.info?.container_extension
+      ) || 'mp4';
+
+    const direct = norm(
+      ep.direct_source ||
+      ep?.info?.direct_source
+    );
+
+    const title =
+      norm(ep.title) ||
+      norm(ep.name) ||
+      norm(ep?.info?.title) ||
+      norm(ep?.info?.name) ||
+      `Episódio ${episodeNumber}`;
+
+    const episodes = seasonsMap.get(seasonNumber) || [];
+
+    if (!episodes.some(x => x.id === providerEpisodeId)) {
+      episodes.push({
+        id: hash(
+          `xtream-episode|${catalog.source.key}|${providerEpisodeId}`
+        ),
+        title,
+        number: episodeNumber,
+        url:
+          direct ||
+          streamUrl(
+            catalog.source,
+            'series',
+            providerEpisodeId,
+            ext
+          ),
+        headers: {}
+      });
+    }
+
+    seasonsMap.set(seasonNumber, episodes);
+  };
+
+  const rawEpisodes = detail?.episodes;
+
+  if (Array.isArray(rawEpisodes)) {
+    // Alguns painéis devolvem um array único de episódios.
+    rawEpisodes.forEach((ep, index) => {
+      addEpisode(ep, ep?.season || 1, index + 1);
+    });
+  } else if (rawEpisodes && typeof rawEpisodes === 'object') {
+    // Formato Xtream mais comum: { "1": [...], "2": [...] }.
+    for (const [seasonKey, rawList] of Object.entries(rawEpisodes)) {
+      if (Array.isArray(rawList)) {
+        rawList.forEach((ep, index) => {
+          addEpisode(ep, seasonKey, index + 1);
+        });
+      } else if (rawList && typeof rawList === 'object') {
+        // Compatibilidade com painéis que usam objeto indexado.
+        Object.values(rawList).forEach((ep, index) => {
+          addEpisode(ep, seasonKey, index + 1);
+        });
+      }
+    }
+  }
+
+  // Fallback adicional: alguns servidores colocam episódios em "series".
+  if (seasonsMap.size === 0 && Array.isArray(detail?.series)) {
+    detail.series.forEach((ep, index) => {
+      addEpisode(ep, ep?.season || 1, index + 1);
+    });
+  }
+
+  const seasons = [...seasonsMap.entries()]
+    .map(([number, episodes]) => ({
+      number: Number(number) || 1,
+      episodes: episodes.sort((a, b) => a.number - b.number)
+    }))
+    .filter(x => x.episodes.length > 0)
+    .sort((a, b) => a.number - b.number);
 
   touch(
     detailCache,

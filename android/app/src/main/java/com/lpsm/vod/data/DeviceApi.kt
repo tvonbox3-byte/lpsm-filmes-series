@@ -39,7 +39,7 @@ object DeviceApi {
             val c = URL(REMOTE_BACKEND_FILE).openConnection() as HttpURLConnection
             c.connectTimeout = 3000
             c.readTimeout = 3000
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.2")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.3")
             val text = c.inputStream.bufferedReader().use { it.readText().trim() }.trimEnd('/')
             if (text.startsWith("https://") || text.startsWith("http://")) text else null
         } catch (_: Exception) { null }
@@ -83,7 +83,7 @@ object DeviceApi {
             c.connectTimeout = 8000
             c.readTimeout = 15000
             c.setRequestProperty("Accept", "application/json")
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.2")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.3")
 
             val body = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -110,7 +110,7 @@ object DeviceApi {
             c.connectTimeout = 4000
             c.readTimeout = 4000
             c.setRequestProperty("Content-Type", "application/json")
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.2")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.3")
             val payload = JSONObject().put("mac", deviceCode(context)).toString().toByteArray()
             c.outputStream.use { it.write(payload) }
             (if (c.responseCode in 200..299) c.inputStream else c.errorStream)?.close()

@@ -175,14 +175,34 @@ function sourceSearch(catalog, kind, query) {
     : searchCatalog(catalog, kind, query);
 }
 
-async function sourceSeriesSeasons(catalog, seriesId) {
-  return catalog?.provider === 'xtream'
-    ? xtreamSeriesSeasons(catalog, seriesId)
-    : seriesSeasons(catalog, seriesId);
+async function sourceSeriesSeasons(
+  sourceUrl,
+  catalog,
+  seriesId
+) {
+  if (catalog?.provider !== 'xtream') {
+    return seriesSeasons(catalog, seriesId);
+  }
+
+  try {
+    const seasons = await xtreamSeriesSeasons(catalog, seriesId);
+    if (seasons && seasons.length) return seasons;
+  } catch (error) {
+    console.warn(
+      'Detalhe Xtream falhou; tentando episódios pela M3U:',
+      error?.message || error
+    );
+  }
+
+  // Reserva: processa a M3U somente se o detalhe Xtream daquela série
+  // falhar. Como o ID agora é baseado no nome normalizado, o mesmo ID
+  // encontra a série no catálogo M3U.
+  const genericCatalog = await catalogFor(sourceUrl);
+  return seriesSeasons(genericCatalog, seriesId);
 }
 
 function clearSourceCache(sourceUrl = '') {
-  clearSourceCache(sourceUrl);
+  clearCatalogCache(sourceUrl);
   clearXtreamCache(sourceUrl);
 }
 
@@ -291,7 +311,7 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const headers = {
-          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.8.0',
+          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.8.3',
           'accept': 'application/x-mpegURL,text/plain,*/*'
         };
 
@@ -488,7 +508,7 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const catalog = await sourceCatalog(access.sourceUrl, 'series');
-        const seasons = await sourceSeriesSeasons(catalog, seriesId);
+        const seasons = await sourceSeriesSeasons(access.sourceUrl, catalog, seriesId);
         if (!seasons) return json(res, 404, { error: 'Série não encontrada' });
         return json(res, 200, {
           active: true,

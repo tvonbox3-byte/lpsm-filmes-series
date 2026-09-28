@@ -1,0 +1,43 @@
+LPSM FILMES & SÉRIES 1.8.3
+
+CORREÇÃO PRINCIPAL
+- Corrigido o carregamento de Temporadas e Episódios.
+- A tela de séries da 1.8.2 foi mantida.
+- A correção principal está no backend.
+
+O QUE FOI CORRIGIDO
+1. IDs das séries agora são iguais tanto no modo Xtream quanto no fallback M3U.
+   Isso evita a situação em que a capa abria, mas o servidor não encontrava
+   a série ao pedir temporadas.
+2. O servidor Xtream aceita mais formatos de resposta de episódios:
+   - episódios separados por temporada;
+   - episódios em array único;
+   - objetos indexados;
+   - campos alternativos de season/episode/id.
+3. O pedido de detalhes da série tenta novamente uma vez se o provedor falhar.
+4. Se o detalhe Xtream falhar, o backend tenta localizar temporadas/episódios
+   diretamente pela M3U como reserva.
+5. Corrigido um erro de recursão em clearSourceCache.
+6. Android usa cache v183 para não reaproveitar IDs antigos incompatíveis.
+7. Favoritos, Continuar assistindo, Adulto por último, busca e séries 3000+
+   permanecem.
+
+IMPORTANTE
+Esta atualização ALTERA android E backend.
+
+COMO ENVIAR
+Envie para a raiz do GitHub:
+- android
+- backend
+
+Commit:
+LPSM Filmes e Series 1.8.3 - corrige temporadas e episodios
+
+Depois:
+1. Aguarde o GitHub Actions ficar verde.
+2. No Render faça Manual Deploy > Deploy latest commit.
+3. Espere o deploy do Render finalizar.
+4. Depois abra a série novamente.
+5. O APK pode chegar pela atualização automática; não precisa baixar manualmente.
+
+NÃO altere .github/workflows nem os Secrets da assinatura.
