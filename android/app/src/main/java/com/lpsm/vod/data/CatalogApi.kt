@@ -25,7 +25,7 @@ import java.util.zip.GZIPInputStream
  * do Render precise processar uma lista grande antes de mostrar Filmes/Séries.
  */
 class CatalogApi(private val context: Context) {
-    private val cacheFile by lazy { File(context.filesDir, "vod_catalog_local_v150.json") }
+    private val cacheFile by lazy { File(context.filesDir, "vod_catalog_local_v152.json") }
     private val cacheTtlMs = 6L * 60L * 60L * 1000L
     @Volatile private var sourceUrl: String = DeviceApi.cachedSourceUrl(context)
 
@@ -157,34 +157,99 @@ class CatalogApi(private val context: Context) {
     }
 
     private fun downloadAndParse(sourceSpec: String): ParsedCatalog {
-        val (urlText, requestHeaders) = splitSourceSpec(sourceSpec)
+        val errors = mutableListOf<String>()
+
+        // 1) Principal: o Render apenas retransmite a M3U.
+        // Ele NÃO precisa processar o catálogo, então começa a responder bem
+        // mais rápido e mantém compatibilidade com provedores que bloqueiam
+        // acesso direto da TV Box.
+        try {
+            return downloadAndParseHttp(
+                urlText = DeviceApi.sourceProxyUrl(context),
+                requestHeaders = emptyMap(),
+                label = "servidor",
+                connectTimeoutMs = 20_000,
+                readTimeoutMs = 180_000
+            )
+        } catch (e: Exception) {
+            errors += "servidor: ${friendlyError(e)}"
+        }
+
+        // 2) Reserva: se o backend estiver temporariamente indisponível,
+        // tenta a própria M3U diretamente.
+        try {
+            val (urlText, requestHeaders) = splitSourceSpec(sourceSpec)
+            return downloadAndParseHttp(
+                urlText = urlText,
+                requestHeaders = requestHeaders,
+                label = "direto",
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 90_000
+            )
+        } catch (e: Exception) {
+            errors += "direto: ${friendlyError(e)}"
+        }
+
+        throw IllegalStateException(
+            "Não foi possível carregar a lista M3U. ${errors.joinToString(" • ")}"
+        )
+    }
+
+    private fun downloadAndParseHttp(
+        urlText: String,
+        requestHeaders: Map<String, String>,
+        label: String,
+        connectTimeoutMs: Int,
+        readTimeoutMs: Int
+    ): ParsedCatalog {
         val connection = URL(urlText).openConnection() as HttpURLConnection
         try {
             connection.instanceFollowRedirects = true
             connection.useCaches = false
-            connection.connectTimeout = 15_000
-            // Listas grandes não são mais abortadas em 60 segundos.
-            connection.readTimeout = 300_000
+            connection.connectTimeout = connectTimeoutMs
+            connection.readTimeout = readTimeoutMs
             connection.setRequestProperty("Accept", "application/x-mpegURL,text/plain,*/*")
-            connection.setRequestProperty("User-Agent", requestHeaders["User-Agent"] ?: "LPSM-VOD/1.5.1")
+            connection.setRequestProperty(
+                "User-Agent",
+                requestHeaders["User-Agent"] ?: "LPSM-VOD/1.5.2"
+            )
+            connection.setRequestProperty("Cache-Control", "no-cache")
             for ((key, value) in requestHeaders) {
-                if (!key.equals("User-Agent", true)) connection.setRequestProperty(key, value)
+                if (!key.equals("User-Agent", true)) {
+                    connection.setRequestProperty(key, value)
+                }
             }
 
             val code = connection.responseCode
             if (code !in 200..299) {
-                val error = connection.errorStream?.bufferedReader()?.use { it.readText().take(250) }.orEmpty()
-                throw IllegalStateException("Lista M3U respondeu HTTP $code${if (error.isBlank()) "" else ": $error"}")
+                val error = connection.errorStream
+                    ?.bufferedReader()
+                    ?.use { it.readText().take(300) }
+                    .orEmpty()
+                throw IllegalStateException(
+                    "$label respondeu HTTP $code${if (error.isBlank()) "" else ": $error"}"
+                )
             }
 
             val input = decodedStream(connection)
-            java.io.InputStreamReader(input, Charsets.UTF_8).buffered(64 * 1024).use { reader ->
-                return M3uParser.parse(reader)
-            }
+            java.io.InputStreamReader(input, Charsets.UTF_8)
+                .buffered(64 * 1024)
+                .use { reader ->
+                    return M3uParser.parse(reader)
+                }
         } catch (e: java.net.SocketTimeoutException) {
-            throw IllegalStateException("Tempo esgotado ao baixar a lista M3U. A última lista salva será mantida.", e)
+            throw IllegalStateException("tempo esgotado", e)
         } finally {
             connection.disconnect()
+        }
+    }
+
+    private fun friendlyError(e: Exception): String {
+        val text = e.message.orEmpty().trim()
+        return when {
+            text.isBlank() -> e.javaClass.simpleName
+            text.length > 180 -> text.take(180)
+            else -> text
         }
     }
 

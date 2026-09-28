@@ -47,6 +47,31 @@ function admin(req) {
   return verifyToken(token, config.secret);
 }
 
+function decodeHeaderValue(value) {
+  const raw = String(value || '').trim();
+  try { return decodeURIComponent(raw.replace(/\+/g, '%20')); }
+  catch { return raw; }
+}
+
+function splitSourceSpec(rawValue) {
+  const raw = cleanUrl(rawValue);
+  const pipe = raw.indexOf('|');
+  if (pipe < 0) return { url: raw, headers: {} };
+
+  const headers = {};
+  const suffix = raw.slice(pipe + 1);
+  for (const part of suffix.split('&')) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    let key = part.slice(0, eq).trim();
+    if (key.toLowerCase() === 'referrer') key = 'Referer';
+    const value = decodeHeaderValue(part.slice(eq + 1));
+    if (key && value) headers[key] = value;
+  }
+
+  return { url: raw.slice(0, pipe).trim(), headers };
+}
+
 function sourceForClient(client) {
   return cleanUrl(client?.sourceUrl || store.data.settings?.defaultSourceUrl || '');
 }
@@ -193,6 +218,79 @@ const server = http.createServer(async (req, res) => {
         // não depende do painel/Render para abrir.
         sourceUrl
       });
+    }
+
+    // Proxy leve da M3U: valida o aparelho e apenas retransmite os bytes.
+    // Não processa filmes/séries no Render, evitando os timeouts do catálogo.
+    if (u.pathname === '/api/device/source' && req.method === 'GET') {
+      const access = deviceAccess(u.searchParams.get('mac'));
+      if (!access.ok) {
+        return json(res, 403, { active: false, message: access.message });
+      }
+
+      const source = splitSourceSpec(access.sourceUrl);
+      if (!/^https?:\/\//i.test(source.url)) {
+        return json(res, 409, { error: 'Lista M3U inválida.' });
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+
+      try {
+        const headers = {
+          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.5.2',
+          'accept': 'application/x-mpegURL,text/plain,*/*'
+        };
+
+        for (const [key, value] of Object.entries(source.headers)) {
+          if (key.toLowerCase() !== 'user-agent') headers[key] = value;
+        }
+
+        const upstream = await fetch(source.url, {
+          redirect: 'follow',
+          signal: controller.signal,
+          headers
+        });
+
+        if (!upstream.ok) {
+          const detail = (await upstream.text().catch(() => '')).slice(0, 300);
+          return json(res, 502, {
+            error: `A lista M3U respondeu HTTP ${upstream.status}`,
+            detail
+          });
+        }
+
+        if (!upstream.body) {
+          return json(res, 502, { error: 'A lista M3U não retornou conteúdo.' });
+        }
+
+        res.writeHead(200, {
+          'content-type': upstream.headers.get('content-type') || 'application/x-mpegURL; charset=utf-8',
+          'cache-control': 'no-store',
+          'access-control-allow-origin': '*',
+          'x-lpsm-source': 'm3u-proxy'
+        });
+
+        for await (const chunk of upstream.body) {
+          if (res.destroyed) break;
+          res.write(Buffer.from(chunk));
+        }
+
+        if (!res.destroyed) res.end();
+        return;
+      } catch (error) {
+        if (!res.headersSent) {
+          return json(res, 502, {
+            error: error?.name === 'AbortError'
+              ? 'Tempo esgotado ao acessar a lista M3U.'
+              : `Falha ao acessar a lista M3U: ${error?.message || 'erro desconhecido'}`
+          });
+        }
+        if (!res.destroyed) res.end();
+        return;
+      } finally {
+        clearTimeout(timeout);
+      }
     }
 
     if (u.pathname === '/api/device/presence' && req.method === 'POST') {

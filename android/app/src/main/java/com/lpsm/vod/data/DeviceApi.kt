@@ -42,7 +42,7 @@ object DeviceApi {
                 c.connectTimeout = 3000
                 c.readTimeout = 3000
                 c.useCaches = false
-                c.setRequestProperty("User-Agent", "LPSM-VOD/1.5.0")
+                c.setRequestProperty("User-Agent", "LPSM-VOD/1.5.2")
                 val text = c.inputStream.bufferedReader().use { it.readText().trim() }.trimEnd('/')
                 if (text.startsWith("https://") || text.startsWith("http://")) text else null
             } finally {
@@ -62,6 +62,17 @@ object DeviceApi {
             .getString("sourceUrl", "")
             .orEmpty()
             .trim()
+
+    /**
+     * A lista é transmitida pelo backend para a box sem o backend precisar
+     * montar o catálogo inteiro. Isso evita o timeout que acontecia quando o
+     * Render tentava processar listas grandes e também atende provedores que
+     * não aceitam conexão direta da TV Box/emulador.
+     */
+    fun sourceProxyUrl(context: Context): String {
+        val mac = URLEncoder.encode(deviceCode(context), "UTF-8")
+        return "${backendUrl(context)}/api/device/source?mac=$mac"
+    }
 
     fun cachedActivation(context: Context): Activation? {
         val p = context.getSharedPreferences("activation", Context.MODE_PRIVATE)
@@ -108,7 +119,7 @@ object DeviceApi {
                 c.readTimeout = 25_000
                 c.useCaches = false
                 c.setRequestProperty("Accept", "application/json")
-                c.setRequestProperty("User-Agent", "LPSM-VOD/1.5.0")
+                c.setRequestProperty("User-Agent", "LPSM-VOD/1.5.2")
 
                 val body = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
                     ?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -144,7 +155,7 @@ object DeviceApi {
                 c.connectTimeout = 5000
                 c.readTimeout = 8000
                 c.setRequestProperty("Content-Type", "application/json")
-                c.setRequestProperty("User-Agent", "LPSM-VOD/1.5.0")
+                c.setRequestProperty("User-Agent", "LPSM-VOD/1.5.2")
                 val payload = JSONObject().put("mac", deviceCode(context)).toString().toByteArray()
                 c.outputStream.use { it.write(payload) }
                 (if (c.responseCode in 200..299) c.inputStream else c.errorStream)?.close()

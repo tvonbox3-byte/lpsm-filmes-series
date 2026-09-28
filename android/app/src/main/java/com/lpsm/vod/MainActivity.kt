@@ -202,7 +202,11 @@ class MainActivity: Activity() {
 
     private fun loadCategories() {
         b.progress.visibility = View.VISIBLE
-        b.status.text = if (modeSeries) "Carregando séries..." else "Carregando filmes..."
+        b.status.text = if (api.hasSavedCatalog()) {
+            if (modeSeries) "Abrindo séries salvas..." else "Abrindo filmes salvos..."
+        } else {
+            if (modeSeries) "Baixando e organizando séries pela primeira vez..." else "Baixando e organizando filmes pela primeira vez..."
+        }
         posters.submit(emptyList())
         pool.execute {
             try {
