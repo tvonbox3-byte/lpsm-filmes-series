@@ -166,7 +166,7 @@ class CatalogApi(private val context: Context) {
             // Listas grandes não são mais abortadas em 60 segundos.
             connection.readTimeout = 300_000
             connection.setRequestProperty("Accept", "application/x-mpegURL,text/plain,*/*")
-            connection.setRequestProperty("User-Agent", requestHeaders["User-Agent"] ?: "LPSM-VOD/1.5.0")
+            connection.setRequestProperty("User-Agent", requestHeaders["User-Agent"] ?: "LPSM-VOD/1.5.1")
             for ((key, value) in requestHeaders) {
                 if (!key.equals("User-Agent", true)) connection.setRequestProperty(key, value)
             }
@@ -178,7 +178,7 @@ class CatalogApi(private val context: Context) {
             }
 
             val input = decodedStream(connection)
-            input.bufferedReader(Charsets.UTF_8, 64 * 1024).use { reader ->
+            java.io.InputStreamReader(input, Charsets.UTF_8).buffered(64 * 1024).use { reader ->
                 return M3uParser.parse(reader)
             }
         } catch (e: java.net.SocketTimeoutException) {
