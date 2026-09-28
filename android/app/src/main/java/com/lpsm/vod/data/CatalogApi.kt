@@ -20,7 +20,7 @@ class CatalogApi(private val context: Context) {
         c.connectTimeout = 10000
         c.readTimeout = 60000
         c.setRequestProperty("Accept", "application/json")
-        c.setRequestProperty("User-Agent", "LPSM-VOD/1.2")
+        c.setRequestProperty("User-Agent", "LPSM-VOD/1.2.1")
         val raw = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
             ?.bufferedReader()?.use { it.readText() }.orEmpty()
         val root = JSONObject(raw.ifBlank { "{}" })
@@ -32,6 +32,18 @@ class CatalogApi(private val context: Context) {
     }
 
     private fun enc(v: String) = URLEncoder.encode(v, "UTF-8")
+
+    private fun headers(o: JSONObject?): Map<String, String> {
+        if (o == null) return emptyMap()
+        val result = linkedMapOf<String, String>()
+        val keys = o.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = o.optString(key)
+            if (key.isNotBlank() && value.isNotBlank()) result[key] = value
+        }
+        return result
+    }
 
     fun categories(series: Boolean): Pair<List<Category>, String> {
         val kind = if (series) "series" else "movie"
@@ -61,7 +73,8 @@ class CatalogApi(private val context: Context) {
                 name = o.optString("name"),
                 image = o.optString("image").takeIf { it.isNotBlank() },
                 isSeries = o.optBoolean("isSeries", series),
-                url = o.optString("url").takeIf { it.isNotBlank() }
+                url = o.optString("url").takeIf { it.isNotBlank() },
+                headers = headers(o.optJSONObject("headers"))
             )
         }
     }
@@ -79,7 +92,8 @@ class CatalogApi(private val context: Context) {
                     Episode(
                         id = e.optString("id"),
                         title = e.optString("title", "Episódio ${j + 1}"),
-                        url = e.optString("url")
+                        url = e.optString("url"),
+                        headers = headers(e.optJSONObject("headers"))
                     )
                 }
             )

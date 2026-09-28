@@ -76,6 +76,67 @@ function getOrCreate(map, key, factory) {
   return value;
 }
 
+function decodeHeaderValue(value) {
+  const raw = String(value || '').trim();
+  try { return decodeURIComponent(raw.replace(/\+/g, '%20')); }
+  catch { return raw; }
+}
+
+function setHeader(headers, key, value) {
+  const k = String(key || '').trim();
+  const v = decodeHeaderValue(value);
+  if (!k || !v) return;
+  const normalized = k.toLowerCase() === 'referrer' ? 'Referer' : k;
+  headers[normalized] = v;
+}
+
+function parseHeaderPairs(text, headers) {
+  const raw = String(text || '').trim();
+  if (!raw) return;
+  for (const part of raw.split('&')) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    setHeader(headers, part.slice(0, eq), part.slice(eq + 1));
+  }
+}
+
+function applyDirective(line, pending) {
+  if (!pending) return false;
+  const lowerLine = line.toLowerCase();
+
+  if (lowerLine.startsWith('#extvlcopt:http-user-agent=')) {
+    setHeader(pending.headers, 'User-Agent', line.slice(line.indexOf('=') + 1));
+    return true;
+  }
+  if (lowerLine.startsWith('#extvlcopt:http-referrer=') || lowerLine.startsWith('#extvlcopt:http-referer=')) {
+    setHeader(pending.headers, 'Referer', line.slice(line.indexOf('=') + 1));
+    return true;
+  }
+  if (lowerLine.startsWith('#kodiprop:inputstream.adaptive.stream_headers=') ||
+      lowerLine.startsWith('#kodiprop:inputstream.adaptive.manifest_headers=')) {
+    parseHeaderPairs(line.slice(line.indexOf('=') + 1), pending.headers);
+    return true;
+  }
+  if (lowerLine.startsWith('#exthttp:')) {
+    const raw = line.slice(line.indexOf(':') + 1).trim();
+    try {
+      const obj = JSON.parse(raw);
+      for (const [k, v] of Object.entries(obj)) setHeader(pending.headers, k, v);
+    } catch { /* ignora EXTHTTP inválido */ }
+    return true;
+  }
+  return false;
+}
+
+function splitUrlAndHeaders(rawUrl, inheritedHeaders = {}) {
+  const headers = { ...inheritedHeaders };
+  const pipe = rawUrl.indexOf('|');
+  if (pipe < 0) return { url: rawUrl, headers };
+  const url = rawUrl.slice(0, pipe).trim();
+  parseHeaderPairs(rawUrl.slice(pipe + 1), headers);
+  return { url, headers };
+}
+
 async function parseM3u(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
@@ -84,7 +145,7 @@ async function parseM3u(url) {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'user-agent': 'LPSM-VOD-Catalog/1.2',
+        'user-agent': 'LPSM-VOD-Catalog/1.2.1',
         'accept': 'application/x-mpegURL,text/plain,*/*'
       }
     });
@@ -111,7 +172,8 @@ async function parseM3u(url) {
         pending = {
           name: displayName(line, a),
           logo: norm(a['tvg-logo']),
-          group: norm(a['group-title']) || fallbackGroup
+          group: norm(a['group-title']) || fallbackGroup,
+          headers: {}
         };
         return;
       }
@@ -120,14 +182,18 @@ async function parseM3u(url) {
         if (pending && !pending.group) pending.group = fallbackGroup;
         return;
       }
-      if (line.startsWith('#')) return;
+      if (line.startsWith('#')) {
+        if (applyDirective(line, pending)) return;
+        return;
+      }
       if (!/^https?:\/\//i.test(line)) { pending = null; return; }
       if (!pending) return;
       if (videoCount >= MAX_ITEMS) return;
 
       const meta = pending;
       pending = null;
-      const kind = classify(line, meta.group, meta.name);
+      const stream = splitUrlAndHeaders(line, meta.headers);
+      const kind = classify(stream.url, meta.group, meta.name);
       if (kind === 'live' || kind === 'other') { ignored++; return; }
       videoCount++;
 
@@ -136,10 +202,11 @@ async function parseM3u(url) {
         movieCategories.set(category.id, category);
         const list = getOrCreate(moviesByCategory, category.id, () => []);
         list.push({
-          id: hash(`movie|${line}`),
+          id: hash(`movie|${stream.url}`),
           name: meta.name,
           image: meta.logo || null,
-          url: line,
+          url: stream.url,
+          headers: stream.headers,
           isSeries: false
         });
         return;
@@ -167,10 +234,11 @@ async function parseM3u(url) {
       }
       const eps = getOrCreate(series.seasons, ep.season, () => []);
       eps.push({
-        id: hash(`episode|${line}`),
+        id: hash(`episode|${stream.url}`),
         title: meta.name,
         number: ep.episode,
-        url: line
+        url: stream.url,
+        headers: stream.headers
       });
     };
 

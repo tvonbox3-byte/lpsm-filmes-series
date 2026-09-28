@@ -7,7 +7,13 @@ data class PosterItem(
     val image: String?,
     val extension: String? = null,
     val isSeries: Boolean = false,
-    val url: String? = null
+    val url: String? = null,
+    val headers: Map<String, String> = emptyMap()
 )
-data class Episode(val id: String, val title: String, val url: String)
+data class Episode(
+    val id: String,
+    val title: String,
+    val url: String,
+    val headers: Map<String, String> = emptyMap()
+)
 data class Season(val number: Int, val episodes: List<Episode>)

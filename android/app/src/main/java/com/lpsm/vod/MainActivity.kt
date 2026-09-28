@@ -19,6 +19,7 @@ import com.lpsm.vod.model.*
 import com.lpsm.vod.ui.CategoryAdapter
 import com.lpsm.vod.ui.PosterAdapter
 import java.text.Normalizer
+import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.Executors
 
@@ -148,7 +149,7 @@ class MainActivity: Activity() {
     private fun openItem(item: PosterItem) {
         if (!item.isSeries) {
             val url = item.url ?: return
-            startActivity(Intent(this, PlayerActivity::class.java).putExtra("url", url))
+            play(url, item.headers)
             return
         }
         b.progress.visibility = View.VISIBLE
@@ -186,12 +187,19 @@ class MainActivity: Activity() {
                     setPadding(16,12,16,12)
                     isFocusable = true
                     setOnClickListener {
-                        startActivity(Intent(this@MainActivity, PlayerActivity::class.java).putExtra("url", ep.url))
+                        play(ep.url, ep.headers)
                     }
                 })
             }
         }
         AlertDialog.Builder(this).setTitle(name).setView(root).setNegativeButton("Fechar", null).show()
+    }
+
+    private fun play(url: String, headers: Map<String, String>) {
+        val intent = Intent(this, PlayerActivity::class.java)
+            .putExtra("url", url)
+            .putExtra("headers", JSONObject(headers).toString())
+        startActivity(intent)
     }
 
     override fun onActivityResult(r: Int, c: Int, d: Intent?) {
