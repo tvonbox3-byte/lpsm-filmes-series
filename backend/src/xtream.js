@@ -302,7 +302,7 @@ async function ensureMovies(catalog, force = false) {
       name: norm(row?.name) || `Filme ${providerId}`,
       image: bestImage(row, false),
       url: norm(row?.direct_source) || streamUrl(catalog.source, 'movie', providerId, ext),
-      headers: {},
+      headers: { ...catalog.source.headers },
       isSeries: false
     };
 
@@ -509,11 +509,6 @@ export async function xtreamSeriesSeasons(catalog, seriesId) {
         ep?.info?.container_extension
       ) || 'mp4';
 
-    const direct = norm(
-      ep.direct_source ||
-      ep?.info?.direct_source
-    );
-
     const title =
       norm(ep.title) ||
       norm(ep.name) ||
@@ -523,22 +518,16 @@ export async function xtreamSeriesSeasons(catalog, seriesId) {
 
     const episodes = seasonsMap.get(seasonNumber) || [];
 
-    if (!episodes.some(x => x.id === providerEpisodeId)) {
+    if (!episodes.some(x => x.providerId === providerEpisodeId)) {
       episodes.push({
         id: hash(
           `xtream-episode|${catalog.source.key}|${providerEpisodeId}`
         ),
+        providerId: providerEpisodeId,
         title,
         number: episodeNumber,
-        url:
-          direct ||
-          streamUrl(
-            catalog.source,
-            'series',
-            providerEpisodeId,
-            ext
-          ),
-        headers: {}
+        url: streamUrl(catalog.source, 'series', providerEpisodeId, ext),
+        headers: { ...catalog.source.headers }
       });
     }
 
@@ -583,12 +572,10 @@ export async function xtreamSeriesSeasons(catalog, seriesId) {
     .filter(x => x.episodes.length > 0)
     .sort((a, b) => a.number - b.number);
 
-  touch(
-    detailCache,
-    key,
-    { createdAt: Date.now(), seasons },
-    MAX_SERIES_DETAILS
-  );
+  // Uma resposta vazia pode ser falha temporária do provedor; não a fixe por 6 horas.
+  if (seasons.length) {
+    touch(detailCache, key, { createdAt: Date.now(), seasons }, MAX_SERIES_DETAILS);
+  }
 
   return seasons;
 }

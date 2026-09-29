@@ -68,10 +68,14 @@ class CatalogApi(private val context: Context) {
 
     private fun get(path: String): JSONObject {
         if (path.contains("/api/device/catalog/series")) {
-            readCacheWithMaxAge(path, seriesCacheTtlMs)?.let { return it }
+            readCacheWithMaxAge(path, seriesCacheTtlMs)?.let {
+                if (hasEpisodes(it)) return it
+            }
         }
 
-        readCache(path, allowStale = false)?.let { return it }
+        readCache(path, allowStale = false)?.let {
+            if (!path.contains("/api/device/catalog/series") || hasEpisodes(it)) return it
+        }
 
         try {
             val url = URL("${DeviceApi.backendUrl(context)}$path")
@@ -132,6 +136,9 @@ class CatalogApi(private val context: Context) {
                     }
                 }
 
+                if (path.contains("/api/device/catalog/series") && !hasEpisodes(root)) {
+                    throw IllegalStateException("Servidor de episódios temporariamente indisponível")
+                }
                 writeCache(path, raw)
                 return root
             } finally {
@@ -139,7 +146,9 @@ class CatalogApi(private val context: Context) {
             }
         } catch (e: Exception) {
             // Se já houve uma carga anterior, mantém o aparelho funcionando.
-            readCache(path, allowStale = true)?.let { return it }
+            readCache(path, allowStale = true)?.let {
+                if (!path.contains("/api/device/catalog/series") || hasEpisodes(it)) return it
+            }
 
             val msg = e.message.orEmpty()
             if (
@@ -154,6 +163,14 @@ class CatalogApi(private val context: Context) {
 
             throw IllegalStateException("Login não está funcionando")
         }
+    }
+
+    private fun hasEpisodes(root: JSONObject): Boolean {
+        val seasons = root.optJSONArray("seasons") ?: return false
+        for (i in 0 until seasons.length()) {
+            if ((seasons.optJSONObject(i)?.optJSONArray("episodes")?.length() ?: 0) > 0) return true
+        }
+        return false
     }
 
     private fun enc(v: String) = URLEncoder.encode(v, "UTF-8")
