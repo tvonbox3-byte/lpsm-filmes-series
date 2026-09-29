@@ -1,0 +1,58 @@
+LPSM FILMES & SÉRIES 1.8.4 — MAC FIXO + PAINEL PROTEGIDO
+
+OBJETIVO
+- O código/MAC do aparelho não muda mais nas próximas atualizações.
+- O painel mantém backup automático dos aparelhos e da Lista M3U.
+
+MAC FIXO
+- Na primeira abertura da 1.8.4, o app calcula EXATAMENTE o mesmo MAC usado
+  pelas versões anteriores e grava esse valor no armazenamento do app.
+- Depois disso, futuras versões usam sempre o MAC salvo.
+- Atualização normal do APK não altera o MAC.
+- Não precisa reativar o aparelho em cada atualização.
+
+PAINEL
+- Cada vez que o painel carrega os dados, cria um backup automático no navegador.
+- Se o Render gratuito reiniciar/deployar e voltar com o banco local vazio,
+  ao entrar novamente no painel PELO MESMO NAVEGADOR ele restaura
+  automaticamente:
+  * Lista M3U principal
+  * aparelhos ativados
+  * nomes
+  * validade
+  * M3U específica de cada aparelho
+  * aparelhos pendentes
+- Também foram adicionados:
+  * botão Baixar backup
+  * botão Restaurar backup
+- Se SUPABASE_URL + SUPABASE_SECRET_KEY (ou SUPABASE_SERVICE_ROLE_KEY)
+  estiverem configurados no Render, o painel usa persistência online e ainda
+  mantém o backup do navegador como segurança extra.
+
+IMPORTANTE SOBRE RENDER FREE
+O disco local do Render gratuito pode ser recriado em deploys/reinícios.
+Por isso a 1.8.4 usa backup automático no navegador quando não há Supabase.
+Para persistência totalmente independente do navegador, pode-se configurar
+Supabase depois.
+
+ESTA VERSÃO NÃO MUDA
+- lógica de Séries/Temporadas/Episódios da 1.8.3
+- atualização automática
+- assinatura
+- workflow GitHub
+
+COMO ENVIAR
+Envie para a raiz do GitHub:
+- android
+- backend
+
+Commit:
+LPSM Filmes e Series 1.8.4 - MAC fixo e painel persistente
+
+Depois:
+1. Aguarde Actions ficar verde.
+2. No Render: Manual Deploy > Deploy latest commit.
+3. Abra o painel no navegador que você já usa.
+4. Depois abra o app; o MAC atual será congelado e reutilizado nas próximas atualizações.
+
+NÃO envie nem altere .github/workflows.

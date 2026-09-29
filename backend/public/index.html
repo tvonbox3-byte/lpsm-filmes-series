@@ -44,6 +44,38 @@
         <div id="catalogStats" class="catalogStats hidden"></div>
       </section>
 
+
+      <section class="card">
+        <div class="tableHead">
+          <div>
+            <h2>Proteção dos dados do painel</h2>
+            <p id="storageText" class="hint">
+              O painel mantém backup automático dos aparelhos e da Lista M3U.
+            </p>
+          </div>
+          <span id="storageBadge" class="badge">Verificando...</span>
+        </div>
+
+        <div class="actions">
+          <button id="downloadBackup" class="ghost">
+            Baixar backup
+          </button>
+          <button id="restoreBackup" class="ghost">
+            Restaurar backup
+          </button>
+          <input
+            id="restoreBackupFile"
+            type="file"
+            accept="application/json,.json"
+            class="hidden"
+          />
+        </div>
+
+        <p class="hint">
+          O código/MAC de cada aparelho também fica fixo no próprio aplicativo e não muda nas próximas atualizações.
+        </p>
+      </section>
+
       <section class="card pendingCard">
         <div class="tableHead">
           <div>

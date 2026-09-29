@@ -311,7 +311,7 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const headers = {
-          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.8.3',
+          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.8.4',
           'accept': 'application/x-mpegURL,text/plain,*/*'
         };
 
@@ -534,7 +534,117 @@ const server = http.createServer(async (req, res) => {
           settings: store.data.settings || { defaultSourceUrl: '' },
           clients: store.data.clients.map(publicClient),
           pendingDevices: store.data.pendingDevices || [],
-          audit: store.data.audit.slice(0, 30)
+          audit: store.data.audit.slice(0, 30),
+          storage: {
+            durable: store.useSupabase,
+            mode: store.useSupabase
+              ? 'supabase'
+              : 'render-local-browser-backup'
+          }
+        });
+      }
+
+      if (u.pathname === '/api/admin/backup' && req.method === 'GET') {
+        return json(res, 200, {
+          version: 1,
+          savedAt: new Date().toISOString(),
+          data: store.snapshot()
+        });
+      }
+
+      if (u.pathname === '/api/admin/restore' && req.method === 'POST') {
+        const b = await body(req);
+        const incoming =
+          b?.data && typeof b.data === 'object'
+            ? b.data
+            : b;
+
+        const defaultSourceUrl =
+          cleanUrl(incoming?.settings?.defaultSourceUrl || '');
+
+        if (
+          defaultSourceUrl &&
+          !isM3uUrl(defaultSourceUrl)
+        ) {
+          return json(res, 400, {
+            error: 'Backup contém uma Lista M3U principal inválida.'
+          });
+        }
+
+        const clients = [];
+        const usedMacs = new Set();
+
+        for (const raw of Array.isArray(incoming?.clients) ? incoming.clients : []) {
+          const mac = formatMac(raw?.mac);
+          const macKey = normMac(mac);
+
+          if (macKey.length !== 12 || usedMacs.has(macKey)) continue;
+
+          const sourceUrl = cleanUrl(raw?.sourceUrl || '');
+          if (sourceUrl && !isM3uUrl(sourceUrl)) continue;
+
+          usedMacs.add(macKey);
+
+          clients.push({
+            id: String(raw?.id || id()),
+            name: String(raw?.name || '').trim(),
+            mac,
+            sourceUrl,
+            enabled: raw?.enabled !== false,
+            expiresAt: String(raw?.expiresAt || '')
+          });
+        }
+
+        const pendingDevices = [];
+        const usedPending = new Set();
+
+        for (const raw of Array.isArray(incoming?.pendingDevices) ? incoming.pendingDevices : []) {
+          const mac = formatMac(raw?.mac);
+          const macKey = normMac(mac);
+
+          if (
+            macKey.length !== 12 ||
+            usedMacs.has(macKey) ||
+            usedPending.has(macKey)
+          ) continue;
+
+          usedPending.add(macKey);
+
+          pendingDevices.push({
+            id: String(raw?.id || id()),
+            mac,
+            firstSeenAt: String(raw?.firstSeenAt || new Date().toISOString()),
+            lastSeenAt: String(raw?.lastSeenAt || new Date().toISOString()),
+            userAgent: String(raw?.userAgent || '')
+          });
+        }
+
+        const previousAudit =
+          Array.isArray(store.data.audit)
+            ? store.data.audit
+            : [];
+
+        await store.mutate(data => {
+          data.settings = { defaultSourceUrl };
+          data.clients = clients;
+          data.pendingDevices = pendingDevices;
+          data.audit = previousAudit.slice(0, 99);
+
+          store.audit(
+            'panel.restore',
+            `Backup restaurado: ${clients.length} aparelhos`
+          );
+        });
+
+        clearSourceCache();
+
+        return json(res, 200, {
+          ok: true,
+          restored: {
+            clients: clients.length,
+            pendingDevices: pendingDevices.length,
+            defaultSource: Boolean(defaultSourceUrl)
+          }
         });
       }
 

@@ -21,12 +21,59 @@ object DeviceApi {
         val expiresAt: String = ""
     )
 
-    fun deviceCode(context: Context): String {
-        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
-            ?: "lpsm-vod-device"
-        val digest = MessageDigest.getInstance("SHA-256").digest(androidId.toByteArray())
-        val raw = digest.take(6).joinToString("") { "%02X".format(it) }
+    private const val DEVICE_ID_PREFS = "lpsm_device_identity_v1"
+    private const val DEVICE_ID_KEY = "stable_mac"
+
+    private fun legacyDeviceCode(context: Context): String {
+        // Mantém exatamente o mesmo cálculo usado nas versões antigas.
+        // Assim, a atualização para 1.8.4 NÃO troca o MAC já conhecido pelo painel.
+        val androidId =
+            Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ANDROID_ID
+            ) ?: "lpsm-vod-device"
+
+        val digest =
+            MessageDigest.getInstance("SHA-256")
+                .digest(androidId.toByteArray())
+
+        val raw =
+            digest.take(6)
+                .joinToString("") { "%02X".format(it) }
+
         return raw.chunked(2).joinToString(":")
+    }
+
+    fun deviceCode(context: Context): String {
+        val prefs =
+            context.getSharedPreferences(
+                DEVICE_ID_PREFS,
+                Context.MODE_PRIVATE
+            )
+
+        val saved =
+            prefs.getString(DEVICE_ID_KEY, "")
+                .orEmpty()
+                .uppercase()
+
+        if (
+            saved.matches(
+                Regex("^[0-9A-F]{2}(:[0-9A-F]{2}){5}$")
+            )
+        ) {
+            return saved
+        }
+
+        // Na primeira abertura desta versão, congela o MAC que o app já usava.
+        val stable = legacyDeviceCode(context)
+
+        // commit() é proposital aqui: queremos garantir que o identificador
+        // esteja gravado antes de qualquer chamada ao painel.
+        prefs.edit()
+            .putString(DEVICE_ID_KEY, stable)
+            .commit()
+
+        return stable
     }
 
     fun backendUrl(context: Context): String {
@@ -39,7 +86,7 @@ object DeviceApi {
             val c = URL(REMOTE_BACKEND_FILE).openConnection() as HttpURLConnection
             c.connectTimeout = 3000
             c.readTimeout = 3000
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.3")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.4")
             val text = c.inputStream.bufferedReader().use { it.readText().trim() }.trimEnd('/')
             if (text.startsWith("https://") || text.startsWith("http://")) text else null
         } catch (_: Exception) { null }
@@ -83,7 +130,7 @@ object DeviceApi {
             c.connectTimeout = 8000
             c.readTimeout = 15000
             c.setRequestProperty("Accept", "application/json")
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.3")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.4")
 
             val body = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -110,7 +157,7 @@ object DeviceApi {
             c.connectTimeout = 4000
             c.readTimeout = 4000
             c.setRequestProperty("Content-Type", "application/json")
-            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.3")
+            c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.4")
             val payload = JSONObject().put("mac", deviceCode(context)).toString().toByteArray()
             c.outputStream.use { it.write(payload) }
             (if (c.responseCode in 200..299) c.inputStream else c.errorStream)?.close()

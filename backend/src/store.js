@@ -10,7 +10,7 @@ export class Store {
     this.data = structuredClone(seed);
     this.queue = Promise.resolve();
     this.supabaseUrl = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
-    this.supabaseKey = String(process.env.SUPABASE_SECRET_KEY || '');
+    this.supabaseKey = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '');
   }
 
   get useSupabase() { return Boolean(this.supabaseUrl && this.supabaseKey); }
@@ -62,8 +62,35 @@ export class Store {
     await rename(tmp, this.file);
   }
 
+  snapshot() {
+    return structuredClone({
+      settings: this.data.settings || { defaultSourceUrl: '' },
+      clients: Array.isArray(this.data.clients) ? this.data.clients : [],
+      pendingDevices: Array.isArray(this.data.pendingDevices) ? this.data.pendingDevices : [],
+      audit: Array.isArray(this.data.audit) ? this.data.audit : []
+    });
+  }
+
+  replace(next) {
+    const safe = next && typeof next === 'object' ? next : {};
+    this.data = {
+      ...structuredClone(seed),
+      settings: {
+        ...structuredClone(seed.settings),
+        ...(safe.settings || {})
+      },
+      clients: Array.isArray(safe.clients) ? safe.clients : [],
+      pendingDevices: Array.isArray(safe.pendingDevices) ? safe.pendingDevices : [],
+      audit: Array.isArray(safe.audit) ? safe.audit.slice(0, 100) : []
+    };
+  }
+
   mutate(fn) {
-    this.queue = this.queue.then(async () => { const result = fn(this.data); await this.save(); return result; });
+    this.queue = this.queue.then(async () => {
+      const result = fn(this.data);
+      await this.save();
+      return result;
+    });
     return this.queue;
   }
 

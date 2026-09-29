@@ -2,6 +2,123 @@ const $ = id => document.getElementById(id);
 let token = sessionStorage.getItem('vodToken') || '';
 let state = { settings: { defaultSourceUrl: '' }, clients: [], pendingDevices: [] };
 
+const PANEL_BACKUP_KEY = 'lpsmVodPanelBackupV2';
+const AUTO_RESTORE_KEY = 'lpsmVodAutoRestoreAttemptedV2';
+
+function backupDataFromState(value = state) {
+  return {
+    settings: {
+      defaultSourceUrl: value?.settings?.defaultSourceUrl || ''
+    },
+    clients: Array.isArray(value?.clients)
+      ? value.clients.map(c => ({
+          id: c.id,
+          name: c.name || '',
+          mac: c.mac || '',
+          sourceUrl: c.sourceUrl || '',
+          enabled: c.enabled !== false,
+          expiresAt: c.expiresAt || ''
+        }))
+      : [],
+    pendingDevices: Array.isArray(value?.pendingDevices)
+      ? value.pendingDevices.map(d => ({
+          id: d.id,
+          mac: d.mac || '',
+          firstSeenAt: d.firstSeenAt || '',
+          lastSeenAt: d.lastSeenAt || '',
+          userAgent: d.userAgent || ''
+        }))
+      : []
+  };
+}
+
+function saveBrowserBackup(value = state) {
+  try {
+    const payload = {
+      version: 2,
+      savedAt: new Date().toISOString(),
+      data: backupDataFromState(value)
+    };
+    localStorage.setItem(PANEL_BACKUP_KEY, JSON.stringify(payload));
+    updateBackupStatus(payload);
+  } catch (_) {}
+}
+
+function readBrowserBackup() {
+  try {
+    const raw = localStorage.getItem(PANEL_BACKUP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.data) return null;
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+function backupScore(data) {
+  const d = data?.data || data || {};
+  const clients = Array.isArray(d.clients) ? d.clients.length : 0;
+  const pending = Array.isArray(d.pendingDevices) ? d.pendingDevices.length : 0;
+  const source = d?.settings?.defaultSourceUrl ? 1 : 0;
+  return clients * 100 + source * 50 + pending;
+}
+
+function serverScore(value) {
+  const clients = Array.isArray(value?.clients) ? value.clients.length : 0;
+  const pending = Array.isArray(value?.pendingDevices) ? value.pendingDevices.length : 0;
+  const source = value?.settings?.defaultSourceUrl ? 1 : 0;
+  return clients * 100 + source * 50 + pending;
+}
+
+function updateBackupStatus(payload = readBrowserBackup()) {
+  const badge = $('storageBadge');
+  const text = $('storageText');
+  if (!badge || !text) return;
+
+  if (state?.storage?.durable) {
+    badge.textContent = 'Persistência online';
+    badge.classList.add('ok');
+    text.textContent =
+      'Dados salvos no armazenamento persistente do servidor. O backup deste navegador também fica ativo.';
+    return;
+  }
+
+  badge.textContent = 'Backup automático';
+  badge.classList.add('ok');
+
+  const when = payload?.savedAt
+    ? fmtDateTime(payload.savedAt)
+    : 'ainda não criado';
+
+  text.textContent =
+    `No Render gratuito, o painel mantém uma cópia automática neste navegador. Último backup: ${when}.`;
+}
+
+async function maybeAutoRestore(serverState) {
+  if (serverState?.storage?.durable) return serverState;
+
+  if (sessionStorage.getItem(AUTO_RESTORE_KEY) === '1') {
+    return serverState;
+  }
+
+  const backup = readBrowserBackup();
+  if (!backup || backupScore(backup) <= 0) return serverState;
+
+  // Só restaura automaticamente quando o backend voltou totalmente vazio.
+  // Assim uma exclusão intencional no painel não é desfeita.
+  if (serverScore(serverState) !== 0) return serverState;
+
+  sessionStorage.setItem(AUTO_RESTORE_KEY, '1');
+
+  await api('/api/admin/restore', {
+    method: 'POST',
+    body: JSON.stringify(backup)
+  });
+
+  return api('/api/admin/state');
+}
+
 async function api(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90000);
@@ -87,7 +204,13 @@ $('clearSource').onclick = async () => {
 
 async function refresh() {
   try {
-    state = await api('/api/admin/state');
+    let fresh = await api('/api/admin/state');
+    fresh = await maybeAutoRestore(fresh);
+    state = fresh;
+
+    // Cada alteração confirmada no servidor gera uma cópia local automática.
+    saveBrowserBackup(state);
+
     const def = state.settings?.defaultSourceUrl || '';
     $('defaultSourceUrl').value = def;
     $('sourceBadge').textContent = def ? 'M3U configurada' : 'Não configurada';
@@ -170,6 +293,64 @@ $('save').onclick = async () => {
     clearForm();
     await refresh();
   } catch(e){ $('formMsg').textContent=e.message; }
+};
+
+
+$('downloadBackup').onclick = async () => {
+  try {
+    const remote = await api('/api/admin/backup');
+    saveBrowserBackup(remote.data || state);
+
+    const blob = new Blob(
+      [JSON.stringify(remote, null, 2)],
+      { type: 'application/json' }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download =
+      `LPSM-painel-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) {
+    alert(`Não foi possível criar o backup: ${e.message}`);
+  }
+};
+
+$('restoreBackup').onclick = () => {
+  $('restoreBackupFile').click();
+};
+
+$('restoreBackupFile').onchange = async event => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const parsed = JSON.parse(await file.text());
+    if (!parsed?.data && !parsed?.clients && !parsed?.settings) {
+      throw new Error('Arquivo de backup inválido');
+    }
+
+    if (!confirm('Restaurar os aparelhos e a Lista M3U deste backup?')) {
+      event.target.value = '';
+      return;
+    }
+
+    await api('/api/admin/restore', {
+      method: 'POST',
+      body: JSON.stringify(parsed)
+    });
+
+    sessionStorage.setItem(AUTO_RESTORE_KEY, '1');
+    await refresh();
+    alert('Backup restaurado.');
+  } catch (e) {
+    alert(`Não foi possível restaurar: ${e.message}`);
+  } finally {
+    event.target.value = '';
+  }
 };
 
 if (token) { showDashboard(true); refresh(); } else showDashboard(false);
