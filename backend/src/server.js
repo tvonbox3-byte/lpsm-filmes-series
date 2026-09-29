@@ -184,21 +184,9 @@ async function sourceSeriesSeasons(
     return seriesSeasons(catalog, seriesId);
   }
 
-  try {
-    const seasons = await xtreamSeriesSeasons(catalog, seriesId);
-    if (seasons && seasons.length) return seasons;
-  } catch (error) {
-    console.warn(
-      'Detalhe Xtream falhou; tentando episódios pela M3U:',
-      error?.message || error
-    );
-  }
-
-  // Reserva: processa a M3U somente se o detalhe Xtream daquela série
-  // falhar. Como o ID agora é baseado no nome normalizado, o mesmo ID
-  // encontra a série no catálogo M3U.
-  const genericCatalog = await catalogFor(sourceUrl);
-  return seriesSeasons(genericCatalog, seriesId);
+  // Não processa a M3U gigante dentro da mesma requisição.
+  // Isso evitava que a tela ficasse esperando até o Android desistir.
+  return xtreamSeriesSeasons(catalog, seriesId);
 }
 
 function clearSourceCache(sourceUrl = '') {
@@ -311,7 +299,7 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const headers = {
-          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.8.4',
+          'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD-Proxy/1.8.5',
           'accept': 'application/x-mpegURL,text/plain,*/*'
         };
 
@@ -520,7 +508,8 @@ const server = http.createServer(async (req, res) => {
         return json(res, 503, {
           active: true,
           sourceReady: false,
-          message: 'Login não está funcionando',
+          temporary: true,
+          message: 'Servidor de episódios temporariamente indisponível',
           seasons: []
         });
       }

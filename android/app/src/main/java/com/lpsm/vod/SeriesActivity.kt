@@ -3,6 +3,7 @@ package com.lpsm.vod
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -29,6 +30,9 @@ class SeriesActivity : Activity() {
     private var seriesNameValue = "Série"
     private var seriesImageValue: String? = null
     private var seriesAdultValue = false
+    private var seriesIdValue = ""
+    private var loadFailed = false
+    private var loadingSeasons = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +42,7 @@ class SeriesActivity : Activity() {
         api = CatalogApi(this)
 
         val seriesId = intent.getStringExtra("seriesId").orEmpty()
+        seriesIdValue = seriesId
         val name = intent.getStringExtra("name").orEmpty().ifBlank { "Série" }
         val image = intent.getStringExtra("image")
 
@@ -75,21 +80,50 @@ class SeriesActivity : Activity() {
             return
         }
 
+        loadSeasons()
+    }
+
+    private fun loadSeasons() {
+        if (loadingSeasons || seriesIdValue.isBlank()) return
+
+        loadingSeasons = true
+        loadFailed = false
         b.progress.visibility = View.VISIBLE
+        b.seriesSubtitle.text = "Carregando temporadas..."
 
         pool.execute {
-            try {
-                val seasons = api.seasons(seriesId)
+            var loaded: List<Season>? = null
+            var lastError: Exception? = null
 
-                runOnUiThread {
-                    b.progress.visibility = View.GONE
+            for (attempt in 1..3) {
+                try {
+                    loaded = api.seasons(seriesIdValue)
+                    if (!loaded.isNullOrEmpty()) break
+                } catch (e: Exception) {
+                    lastError = e
+                }
 
-                    if (seasons.isEmpty()) {
-                        b.seriesSubtitle.text = "Nenhum episódio encontrado para esta série."
-                        return@runOnUiThread
+                if (attempt < 3) {
+                    try {
+                        Thread.sleep(900L * attempt)
+                    } catch (_: InterruptedException) {
+                        break
                     }
+                }
+            }
 
-                    val episodeCount = seasons.sumOf { it.episodes.size }
+            runOnUiThread {
+                loadingSeasons = false
+                b.progress.visibility = View.GONE
+
+                val seasons = loaded
+
+                if (!seasons.isNullOrEmpty()) {
+                    loadFailed = false
+
+                    val episodeCount =
+                        seasons.sumOf { it.episodes.size }
+
                     b.seriesSubtitle.text =
                         "${seasons.size} temporada${if (seasons.size == 1) "" else "s"} • " +
                         "$episodeCount episódio${if (episodeCount == 1) "" else "s"}"
@@ -97,16 +131,22 @@ class SeriesActivity : Activity() {
                     seasonsAdapter.submit(seasons)
                     showSeason(seasons.first(), focusEpisodes = false)
 
-                    // O primeiro foco sempre cai na Temporada 1/primeira temporada encontrada.
                     b.seasons.postDelayed({
                         focusSelectedSeason()
                     }, 180L)
+
+                    return@runOnUiThread
                 }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    b.progress.visibility = View.GONE
-                    b.seriesSubtitle.text = "Erro ao carregar episódios: ${e.message}"
-                }
+
+                loadFailed = true
+
+                val detail =
+                    lastError?.message
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "Servidor de episódios temporariamente indisponível"
+
+                b.seriesSubtitle.text =
+                    "$detail • pressione OK para tentar novamente"
             }
         }
     }
@@ -182,6 +222,24 @@ class SeriesActivity : Activity() {
                 .putExtra("contentModeSeries", true)
                 .putExtra("contentAdult", seriesAdultValue)
         )
+    }
+
+    override fun onKeyDown(
+        keyCode: Int,
+        event: KeyEvent?
+    ): Boolean {
+        if (
+            loadFailed &&
+            (
+                keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                keyCode == KeyEvent.KEYCODE_ENTER
+            )
+        ) {
+            loadSeasons()
+            return true
+        }
+
+        return super.onKeyDown(keyCode, event)
     }
 
     override fun onDestroy() {

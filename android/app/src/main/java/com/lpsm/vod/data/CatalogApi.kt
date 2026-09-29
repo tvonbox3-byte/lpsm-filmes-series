@@ -18,6 +18,7 @@ class CatalogApi(private val context: Context) {
     private val cacheDir by lazy { File(context.filesDir, "vod_catalog_cache_v183").apply { mkdirs() } }
     private val legacyCacheDir by lazy { File(context.filesDir, "vod_catalog_cache").apply { mkdirs() } }
     private val cacheTtlMs = 24L * 60L * 60L * 1000L
+    private val seriesCacheTtlMs = 7L * 24L * 60L * 60L * 1000L
 
     private fun cacheKey(path: String): String =
         MessageDigest.getInstance("SHA-256")
@@ -38,6 +39,23 @@ class CatalogApi(private val context: Context) {
         return readJsonFile(legacyCacheFile(path), true)
     }
 
+    private fun readCacheWithMaxAge(
+        path: String,
+        maxAgeMs: Long
+    ): JSONObject? {
+        val current = cacheFile(path)
+        if (
+            current.exists() &&
+            System.currentTimeMillis() - current.lastModified() <= maxAgeMs
+        ) {
+            try {
+                return JSONObject(current.readText())
+            } catch (_: Exception) { }
+        }
+
+        return null
+    }
+
     private fun writeCache(path: String, raw: String) {
         try { cacheFile(path).writeText(raw) } catch (_: Exception) { }
     }
@@ -49,7 +67,10 @@ class CatalogApi(private val context: Context) {
     }
 
     private fun get(path: String): JSONObject {
-        // Catálogo válido salvo: abre imediatamente sem depender do painel.
+        if (path.contains("/api/device/catalog/series")) {
+            readCacheWithMaxAge(path, seriesCacheTtlMs)?.let { return it }
+        }
+
         readCache(path, allowStale = false)?.let { return it }
 
         try {
@@ -62,7 +83,7 @@ class CatalogApi(private val context: Context) {
                 c.useCaches = false
                 c.setRequestProperty("Accept", "application/json")
                 c.setRequestProperty("Cache-Control", "no-cache")
-                c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.4")
+                c.setRequestProperty("User-Agent", "LPSM-VOD/1.8.5")
 
                 val code = c.responseCode
                 val raw = (if (code in 200..299) c.inputStream else c.errorStream)
@@ -91,6 +112,15 @@ class CatalogApi(private val context: Context) {
                 }
 
                 if (code !in 200..299) {
+                    val serverMessage = root.optString("message").trim()
+
+                    if (
+                        path.contains("/api/device/catalog/series") &&
+                        serverMessage.isNotBlank()
+                    ) {
+                        throw IllegalStateException(serverMessage)
+                    }
+
                     throw IllegalStateException("Login não está funcionando")
                 }
 
@@ -115,7 +145,9 @@ class CatalogApi(private val context: Context) {
             if (
                 msg.contains("aguardando ativ", true) ||
                 msg.contains("paus", true) ||
-                msg.contains("expir", true)
+                msg.contains("expir", true) ||
+                msg.contains("episódios", true) ||
+                msg.contains("temporariamente", true)
             ) {
                 throw e
             }

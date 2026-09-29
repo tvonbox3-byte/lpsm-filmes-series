@@ -101,7 +101,7 @@ async function apiJson(source, action, extra = {}, timeoutMs = 35_000) {
 
   try {
     const headers = {
-      'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD/1.8.3',
+      'user-agent': source.headers['User-Agent'] || source.headers['user-agent'] || 'LPSM-VOD/1.8.5',
       'accept': 'application/json,*/*'
     };
     for (const [k, v] of Object.entries(source.headers)) {
@@ -449,22 +449,24 @@ export async function xtreamSeriesSeasons(catalog, seriesId) {
   let detail;
   let lastError;
 
-  // Alguns servidores Xtream falham esporadicamente no primeiro pedido.
-  // Repetimos somente o detalhe da série, sem recarregar 3.000+ capas.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Tentativas curtas para não estourar o timeout do app.
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       detail = await apiJson(
         catalog.source,
         'get_series_info',
         { series_id: item.providerId },
-        45_000
+        12_000
       );
       lastError = null;
       break;
     } catch (error) {
       lastError = error;
-      if (attempt === 0) {
-        await new Promise(resolve => setTimeout(resolve, 700));
+
+      if (attempt < 2) {
+        await new Promise(resolve =>
+          setTimeout(resolve, 500 + attempt * 400)
+        );
       }
     }
   }

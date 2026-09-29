@@ -1,0 +1,39 @@
+LPSM FILMES & SÉRIES 1.8.5 — EPISÓDIOS ESTÁVEIS
+
+POR QUE ÀS VEZES FUNCIONAVA E ÀS VEZES NÃO
+Na 1.8.4 o backend podia ficar tempo demais tentando:
+1. get_series_info no provedor;
+2. uma segunda tentativa longa;
+3. depois ainda processar a M3U inteira.
+
+O Android desistia da conexão antes de o backend terminar.
+Por isso a mesma série podia abrir uma vez e dar erro em outra.
+
+CORREÇÕES
+- Backend faz até 3 tentativas curtas no detalhe da série.
+- Removido o parser M3U gigante do caminho síncrono quando a fonte é Xtream.
+- App também tenta até 3 vezes automaticamente.
+- Se ainda falhar, mostra:
+  "Servidor de episódios temporariamente indisponível"
+  e pressionar OK tenta novamente.
+- Não mostra mais "Login não está funcionando" quando o login está correto.
+- Temporadas/episódios carregados com sucesso ficam em cache no aparelho por 7 dias.
+- Mantém o cache v183 para não apagar episódios que já carregaram.
+- Mantém séries 3000+, busca, favoritos, continuar assistindo, adulto por último,
+  MAC fixo, backup do painel e atualização automática.
+
+COMO ENVIAR
+Envie para a raiz do GitHub:
+- android
+- backend
+
+Commit:
+LPSM Filmes e Series 1.8.5 - estabiliza temporadas e episodios
+
+Depois:
+1. Aguarde Actions ficar verde.
+2. Render: Manual Deploy > Deploy latest commit.
+3. Aguarde o deploy finalizar.
+4. A atualização do APK deve chegar automaticamente.
+
+NÃO altere .github/workflows nem os Secrets.
