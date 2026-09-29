@@ -337,7 +337,12 @@ export async function xtreamCatalogFor(sourceUrl, kind = 'all', force = false) {
   const cacheKey = norm(sourceUrl);
   let entry = catalogCache.get(cacheKey);
 
-  if (!force && entry?.promise) return entry.promise;
+  // Uma carga de filmes e outra de séries podem chegar ao mesmo tempo.
+  // Espere a primeira terminar, depois garanta que o tipo pedido foi carregado.
+  if (entry?.promise) {
+    try { await entry.promise; } catch { /* a nova tentativa decide o resultado */ }
+    return xtreamCatalogFor(sourceUrl, kind, force);
+  }
 
   let catalog = entry?.catalog;
   if (!catalog || Date.now() - catalog.createdAt > CATALOG_TTL_MS) {
@@ -361,7 +366,16 @@ export async function xtreamCatalogFor(sourceUrl, kind = 'all', force = false) {
   try {
     return await promise;
   } catch (e) {
-    catalogCache.delete(cacheKey);
+    // Uma falha temporária do provedor não apaga o catálogo que já funcionava.
+    if (entry?.catalog) {
+      touch(catalogCache, cacheKey, { catalog: entry.catalog, createdAt: Date.now() }, MAX_CATALOG_SOURCES);
+      const ready = kind === 'series' ? entry.catalog.seriesLoaded
+        : kind === 'movie' ? entry.catalog.moviesLoaded
+        : entry.catalog.seriesLoaded && entry.catalog.moviesLoaded;
+      if (ready) return entry.catalog;
+    } else {
+      catalogCache.delete(cacheKey);
+    }
     throw e;
   }
 }
@@ -458,8 +472,15 @@ export async function xtreamSeriesSeasons(catalog, seriesId) {
         { series_id: item.providerId },
         12_000
       );
-      lastError = null;
-      break;
+      const raw = detail?.episodes;
+      const hasEntries = Array.isArray(raw) ? raw.length > 0
+        : raw && typeof raw === 'object' && Object.values(raw).some(value =>
+            Array.isArray(value) ? value.length > 0 : value && typeof value === 'object' && Object.keys(value).length > 0);
+      if (hasEntries || (Array.isArray(detail?.series) && detail.series.length > 0)) {
+        lastError = null;
+        break;
+      }
+      lastError = new Error('Provedor retornou episódios vazios');
     } catch (error) {
       lastError = error;
 
@@ -471,7 +492,7 @@ export async function xtreamSeriesSeasons(catalog, seriesId) {
     }
   }
 
-  if (!detail) throw lastError || new Error('Detalhes da série indisponíveis');
+  if (!detail || lastError) throw lastError || new Error('Detalhes da série indisponíveis');
 
   const seasonsMap = new Map();
 
@@ -509,6 +530,9 @@ export async function xtreamSeriesSeasons(catalog, seriesId) {
         ep?.info?.container_extension
       ) || 'mp4';
 
+    const direct = norm(ep.direct_source || ep?.info?.direct_source);
+    const standard = streamUrl(catalog.source, 'series', providerEpisodeId, ext);
+
     const title =
       norm(ep.title) ||
       norm(ep.name) ||
@@ -526,7 +550,8 @@ export async function xtreamSeriesSeasons(catalog, seriesId) {
         providerId: providerEpisodeId,
         title,
         number: episodeNumber,
-        url: streamUrl(catalog.source, 'series', providerEpisodeId, ext),
+        url: /^https?:\/\//i.test(direct) ? direct : standard,
+        alternateUrl: /^https?:\/\//i.test(direct) && direct !== standard ? standard : '',
         headers: { ...catalog.source.headers }
       });
     }
@@ -573,9 +598,8 @@ export async function xtreamSeriesSeasons(catalog, seriesId) {
     .sort((a, b) => a.number - b.number);
 
   // Uma resposta vazia pode ser falha temporária do provedor; não a fixe por 6 horas.
-  if (seasons.length) {
-    touch(detailCache, key, { createdAt: Date.now(), seasons }, MAX_SERIES_DETAILS);
-  }
+  if (!seasons.length) throw new Error('Provedor retornou episódios inválidos');
+  touch(detailCache, key, { createdAt: Date.now(), seasons }, MAX_SERIES_DETAILS);
 
   return seasons;
 }

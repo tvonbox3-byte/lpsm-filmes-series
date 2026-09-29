@@ -18,7 +18,8 @@ data class Episode(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
     val number: Int = 0,
-    val season: Int = 1
+    val season: Int = 1,
+    val alternateUrl: String = ""
 )
 
 data class Season(val number: Int, val episodes: List<Episode>)

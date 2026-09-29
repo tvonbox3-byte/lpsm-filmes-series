@@ -214,6 +214,7 @@ class SeriesActivity : Activity() {
         startActivity(
             Intent(this, PlayerActivity::class.java)
                 .putExtra("url", ep.url)
+                .putExtra("alternateUrl", ep.alternateUrl)
                 .putExtra("title", displayName)
                 .putExtra("headers", JSONObject(ep.headers).toString())
                 .putExtra("contentKey", "e:${ep.id}")

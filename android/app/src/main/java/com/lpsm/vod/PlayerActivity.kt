@@ -24,6 +24,8 @@ class PlayerActivity : Activity() {
     private var player: ExoPlayer? = null
 
     private var urlValue = ""
+    private var alternateUrl = ""
+    private var triedAlternate = false
     private var contentKey = ""
     private var contentName = ""
     private var contentImage: String? = null
@@ -53,6 +55,7 @@ class PlayerActivity : Activity() {
         }
 
         urlValue = url
+        alternateUrl = intent.getStringExtra("alternateUrl")?.trim().orEmpty()
         contentKey = intent.getStringExtra("contentKey").orEmpty()
         contentName = intent.getStringExtra("contentName")
             ?.takeIf { it.isNotBlank() }
@@ -102,6 +105,14 @@ class PlayerActivity : Activity() {
                 b.playerView.player = exo
                 exo.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
+                        if (!triedAlternate && alternateUrl.startsWith("http") && alternateUrl != urlValue) {
+                            triedAlternate = true
+                            urlValue = alternateUrl
+                            exo.setMediaItem(mediaItem(alternateUrl))
+                            exo.prepare()
+                            exo.playWhenReady = true
+                            return
+                        }
                         saveProgress()
                         Toast.makeText(
                             this@PlayerActivity,
@@ -120,18 +131,7 @@ class PlayerActivity : Activity() {
                     }
                 })
 
-                val media = MediaItem.Builder()
-                    .setUri(url)
-                    .apply {
-                        val path = url.substringBefore('?').lowercase()
-                        when {
-                            path.endsWith(".m3u8") -> setMimeType(MimeTypes.APPLICATION_M3U8)
-                            path.endsWith(".mpd") -> setMimeType(MimeTypes.APPLICATION_MPD)
-                        }
-                    }
-                    .build()
-
-                exo.setMediaItem(media)
+                exo.setMediaItem(mediaItem(url))
 
                 val resume =
                     if (contentKey.isNotBlank()) {
@@ -148,6 +148,17 @@ class PlayerActivity : Activity() {
 
         progressHandler.postDelayed(progressSaver, 12_000L)
     }
+
+    private fun mediaItem(url: String): MediaItem = MediaItem.Builder()
+        .setUri(url)
+        .apply {
+            val path = url.substringBefore('?').lowercase()
+            when {
+                path.endsWith(".m3u8") -> setMimeType(MimeTypes.APPLICATION_M3U8)
+                path.endsWith(".mpd") -> setMimeType(MimeTypes.APPLICATION_MPD)
+            }
+        }
+        .build()
 
     private fun saveProgress() {
         val exo = player ?: return

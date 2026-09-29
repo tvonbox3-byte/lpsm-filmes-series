@@ -265,7 +265,8 @@ class CatalogApi(private val context: Context) {
                         url = e.optString("url"),
                         headers = headers(e.optJSONObject("headers")),
                         number = e.optInt("number", j + 1),
-                        season = seasonNo
+                        season = seasonNo,
+                        alternateUrl = e.optString("alternateUrl")
                     )
                 }.sortedBy { it.number }
             )
