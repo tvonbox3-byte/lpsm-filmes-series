@@ -16,6 +16,17 @@ class SeasonAdapter(
 
     private var items = listOf<Season>()
     private var selected = -1
+    private var recycler: RecyclerView? = null
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        recycler = recyclerView
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        recycler = null
+        super.onDetachedFromRecyclerView(recyclerView)
+    }
 
     fun submit(v: List<Season>) {
         items = v
@@ -27,10 +38,38 @@ class SeasonAdapter(
 
     fun select(index: Int, notify: Boolean = true) {
         if (index !in items.indices) return
-        val changed = selected != index
+        val previous = selected
         selected = index
-        if (changed) notifyDataSetChanged()
+        if (previous != index) {
+            if (previous in items.indices) notifyItemChanged(previous, "selection")
+            notifyItemChanged(index, "selection")
+        }
         if (notify) onSelected(items[index])
+    }
+
+    private fun updateSelection(h: VH, position: Int) {
+        val isSelected = position == selected
+        h.b.root.isSelected = isSelected
+        h.b.name.isSelected = isSelected
+        h.b.name.setTypeface(null, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+    }
+
+    override fun onBindViewHolder(h: VH, position: Int, payloads: MutableList<Any>) {
+        if (payloads.isNotEmpty() && payloads.all { it == "selection" }) updateSelection(h, position)
+        else onBindViewHolder(h, position)
+    }
+
+    private fun moveFocus(position: Int) {
+        if (position !in items.indices) return
+        val view = recycler ?: return
+        view.scrollToPosition(position)
+        view.post {
+            if (view.findViewHolderForAdapterPosition(position)?.itemView?.requestFocus() != true) {
+                view.postDelayed({
+                    if (recycler === view) view.findViewHolderForAdapterPosition(position)?.itemView?.requestFocus()
+                }, 80L)
+            }
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
@@ -42,10 +81,7 @@ class SeasonAdapter(
         val season = items[position]
         h.b.name.text = "Temporada ${season.number}"
 
-        val isSelected = position == selected
-        h.b.root.isSelected = isSelected
-        h.b.name.isSelected = isSelected
-        h.b.name.setTypeface(null, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+        updateSelection(h, position)
 
         // OK seleciona a temporada.
         h.b.root.setOnClickListener {
@@ -74,6 +110,15 @@ class SeasonAdapter(
         val confirm = RemoteConfirm()
         h.b.root.setOnKeyListener { _, keyCode, event ->
             if (confirm.handle(h.b.root, keyCode, event)) return@setOnKeyListener true
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    val p = h.bindingAdapterPosition
+                    if (p != RecyclerView.NO_POSITION) {
+                        moveFocus(p + if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) 1 else -1)
+                    }
+                }
+                return@setOnKeyListener true
+            }
             if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 val p = h.bindingAdapterPosition
                 if (p != RecyclerView.NO_POSITION) {
