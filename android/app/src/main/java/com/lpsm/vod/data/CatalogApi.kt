@@ -104,28 +104,13 @@ class CatalogApi(private val context: Context) {
                 // Ativação inválida continua sendo tratada separadamente.
                 if (!root.optBoolean("active", true)) {
                     val msg = root.optString("message")
-                    if (
-                        msg.contains("aguardando ativ", true) ||
-                        msg.contains("paus", true) ||
-                        msg.contains("expir", true)
-                    ) {
-                        throw IllegalStateException(msg)
-                    }
-
-                    throw IllegalStateException("Login não está funcionando")
+                    throw IllegalStateException(msg.ifBlank { "Aparelho não ativado no painel" })
                 }
 
                 if (code !in 200..299) {
-                    val serverMessage = root.optString("message").trim()
-
-                    if (
-                        path.contains("/api/device/catalog/series") &&
-                        serverMessage.isNotBlank()
-                    ) {
-                        throw IllegalStateException(serverMessage)
-                    }
-
-                    throw IllegalStateException("Login não está funcionando")
+                    val serverMessage = root.optString("message")
+                        .ifBlank { root.optString("error") }.trim()
+                    throw IllegalStateException(serverMessage.ifBlank { "Servidor indisponível (HTTP $code)" })
                 }
 
                 // Um catálogo sem categorias de VOD é considerado login/fonte inválida.
@@ -150,18 +135,7 @@ class CatalogApi(private val context: Context) {
                 if (!path.contains("/api/device/catalog/series") || hasEpisodes(it)) return it
             }
 
-            val msg = e.message.orEmpty()
-            if (
-                msg.contains("aguardando ativ", true) ||
-                msg.contains("paus", true) ||
-                msg.contains("expir", true) ||
-                msg.contains("episódios", true) ||
-                msg.contains("temporariamente", true)
-            ) {
-                throw e
-            }
-
-            throw IllegalStateException("Login não está funcionando")
+            throw e
         }
     }
 

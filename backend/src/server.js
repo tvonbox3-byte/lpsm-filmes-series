@@ -484,10 +484,10 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === '/api/device/catalog/series' && req.method === 'GET') {
       const access = deviceAccess(u.searchParams.get('mac'));
       if (!access.ok) {
-        return json(res, 409, {
-          active: true,
+        return json(res, access.status, {
+          active: false,
           sourceReady: false,
-          message: 'Login não está funcionando',
+          message: access.message,
           seasons: []
         });
       }
@@ -497,7 +497,11 @@ const server = http.createServer(async (req, res) => {
       try {
         const catalog = await sourceCatalog(access.sourceUrl, 'series');
         const seasons = await sourceSeriesSeasons(access.sourceUrl, catalog, seriesId);
-        if (!seasons) return json(res, 404, { error: 'Série não encontrada' });
+        if (!seasons) return json(res, 404, {
+          active: true,
+          message: 'Série não encontrada no catálogo atual. Atualize o catálogo e tente novamente.',
+          seasons: []
+        });
         return json(res, 200, {
           active: true,
           sourceReady: true,

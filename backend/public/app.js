@@ -3,7 +3,7 @@ let token = sessionStorage.getItem('vodToken') || '';
 let state = { settings: { defaultSourceUrl: '' }, clients: [], pendingDevices: [] };
 
 const PANEL_BACKUP_KEY = 'lpsmVodPanelBackupV2';
-const AUTO_RESTORE_KEY = 'lpsmVodAutoRestoreAttemptedV2';
+let restoreInProgress = null;
 
 function backupDataFromState(value = state) {
   return {
@@ -56,19 +56,9 @@ function readBrowserBackup() {
   }
 }
 
-function backupScore(data) {
-  const d = data?.data || data || {};
-  const clients = Array.isArray(d.clients) ? d.clients.length : 0;
-  const pending = Array.isArray(d.pendingDevices) ? d.pendingDevices.length : 0;
-  const source = d?.settings?.defaultSourceUrl ? 1 : 0;
-  return clients * 100 + source * 50 + pending;
-}
-
-function serverScore(value) {
-  const clients = Array.isArray(value?.clients) ? value.clients.length : 0;
-  const pending = Array.isArray(value?.pendingDevices) ? value.pendingDevices.length : 0;
-  const source = value?.settings?.defaultSourceUrl ? 1 : 0;
-  return clients * 100 + source * 50 + pending;
+function hasConfiguredService(value) {
+  return Boolean(value?.settings?.defaultSourceUrl) ||
+    (Array.isArray(value?.clients) && value.clients.length > 0);
 }
 
 function updateBackupStatus(payload = readBrowserBackup()) {
@@ -98,25 +88,25 @@ function updateBackupStatus(payload = readBrowserBackup()) {
 async function maybeAutoRestore(serverState) {
   if (serverState?.storage?.durable) return serverState;
 
-  if (sessionStorage.getItem(AUTO_RESTORE_KEY) === '1') {
-    return serverState;
-  }
-
   const backup = readBrowserBackup();
-  if (!backup || backupScore(backup) <= 0) return serverState;
+  if (!backup || !hasConfiguredService(backup.data)) return serverState;
 
   // Só restaura automaticamente quando o backend voltou totalmente vazio.
   // Assim uma exclusão intencional no painel não é desfeita.
-  if (serverScore(serverState) !== 0) return serverState;
+  // Um aparelho pendente aparece assim que o app tenta conectar após o reinício.
+  // Isso não significa que a configuração foi restaurada.
+  if (hasConfiguredService(serverState)) return serverState;
 
-  sessionStorage.setItem(AUTO_RESTORE_KEY, '1');
-
-  await api('/api/admin/restore', {
-    method: 'POST',
-    body: JSON.stringify(backup)
-  });
-
-  return api('/api/admin/state');
+  if (!restoreInProgress) {
+    restoreInProgress = (async () => {
+      await api('/api/admin/restore', {
+        method: 'POST',
+        body: JSON.stringify(backup)
+      });
+      return api('/api/admin/state');
+    })().finally(() => { restoreInProgress = null; });
+  }
+  return restoreInProgress;
 }
 
 async function api(path, options = {}) {
@@ -173,7 +163,7 @@ async function saveSource() {
   const r = await api('/api/admin/settings', { method:'PUT', body:JSON.stringify({ defaultSourceUrl }) });
   state.settings = r.settings || { defaultSourceUrl };
   $('sourceMsg').textContent = defaultSourceUrl ? 'Lista M3U principal salva.' : 'Lista principal removida.';
-  await refresh();
+  await refresh({ allowEmpty: !defaultSourceUrl });
 }
 
 $('testSource').onclick = async () => {
@@ -202,14 +192,15 @@ $('clearSource').onclick = async () => {
   $('catalogStats').classList.add('hidden');
 };
 
-async function refresh() {
+async function refresh({ allowEmpty = false } = {}) {
   try {
     let fresh = await api('/api/admin/state');
-    fresh = await maybeAutoRestore(fresh);
+    if (!allowEmpty) fresh = await maybeAutoRestore(fresh);
     state = fresh;
 
     // Cada alteração confirmada no servidor gera uma cópia local automática.
-    saveBrowserBackup(state);
+    // Se o Render reiniciou vazio, preserve a última cópia boa no navegador.
+    if (allowEmpty || hasConfiguredService(state)) saveBrowserBackup(state);
 
     const def = state.settings?.defaultSourceUrl || '';
     $('defaultSourceUrl').value = def;
@@ -275,7 +266,7 @@ window.editClient = id => {
   $('cancel').classList.remove('hidden');
   window.scrollTo({top:document.querySelector('.grid2').offsetTop-20,behavior:'smooth'});
 };
-window.deleteClient = async id => { if (!confirm('Excluir este aparelho?')) return; await api(`/api/admin/clients/${id}`, {method:'DELETE'}); await refresh(); };
+window.deleteClient = async id => { if (!confirm('Excluir este aparelho?')) return; await api(`/api/admin/clients/${id}`, {method:'DELETE'}); await refresh({ allowEmpty: true }); };
 $('cancel').onclick = clearForm;
 function clearForm(){ $('clientId').value=''; $('name').value=''; $('mac').value=''; $('sourceUrl').value=''; $('expiresAt').value=''; $('enabled').checked=true; $('formTitle').textContent='Cadastrar aparelho'; $('cancel').classList.add('hidden'); $('formMsg').textContent=''; }
 $('save').onclick = async () => {
