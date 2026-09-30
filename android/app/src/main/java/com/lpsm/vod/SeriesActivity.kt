@@ -182,7 +182,7 @@ class SeriesActivity : Activity() {
     }
 
     private fun focusSelectedSeason() {
-        if (touchDevice) return
+        if (touchDevice && b.root.isInTouchMode) return
         val position = seasonsAdapter.selectedPosition().coerceAtLeast(0)
         b.seasons.scrollToPosition(position)
 
@@ -200,7 +200,7 @@ class SeriesActivity : Activity() {
     }
 
     private fun focusFirstEpisode() {
-        if (touchDevice) return
+        if (touchDevice && b.root.isInTouchMode) return
         b.episodes.scrollToPosition(0)
 
         b.episodes.postDelayed({

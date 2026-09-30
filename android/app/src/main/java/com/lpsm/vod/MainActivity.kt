@@ -202,7 +202,7 @@ class MainActivity: Activity() {
         pool.execute {
             try {
                 val list = api.search(modeSeries, query)
-                runOnUiThread {
+                runIfAlive {
                     b.progress.visibility = View.GONE
                     posters.submit(list)
                     b.sectionTitle.text = "Resultados para “$query”"
@@ -218,13 +218,13 @@ class MainActivity: Activity() {
                     }
                 }
             } catch (_: Exception) {
-                runOnUiThread { showM3uLoginError() }
+                runIfAlive { showM3uLoginError() }
             }
         }
     }
 
     private fun focusFirstPoster() {
-        if (touchDevice) return
+        if (touchDevice && b.root.isInTouchMode) return
         b.grid.scrollToPosition(0)
         b.grid.postDelayed({
             b.grid.findViewHolderForAdapterPosition(0)
@@ -262,44 +262,22 @@ class MainActivity: Activity() {
     private fun verifyAndLoad() {
         b.progress.visibility = View.VISIBLE
 
-        // Se já existe ativação + catálogo no aparelho, abre na hora.
-        // Isso evita esperar o Render Free "acordar" toda vez que o app abre.
-        val cachedActivation = DeviceApi.fastCachedActivation(this)
-        val cachedCatalog = api.hasCachedCategories(modeSeries)
-
-        if (cachedActivation?.active == true && cachedCatalog) {
-            b.status.text = "Abrindo catálogo salvo..."
-            updateTabs()
-            loadCategories()
-
-            // Atualiza ativação/servidor em segundo plano, sem travar a Home.
-            pool.execute {
-                try {
-                    DeviceApi.heartbeat(this)
-                    DeviceApi.fetchActivation(this)
-                    api.prefetchHome()
-                } catch (_: Exception) { }
-            }
-            return
-        }
-
         b.status.text = "Preparando seu catálogo..."
         pool.execute {
             try {
                 DeviceApi.heartbeat(this)
                 val result = DeviceApi.fetchActivation(this)
-                runOnUiThread {
+                runIfAlive {
                     if (result.active) {
                         updateTabs()
                         loadCategories()
-                        pool.execute { api.prefetchHome() }
                     } else {
                         b.progress.visibility = View.GONE
                         startActivityForResult(Intent(this, SetupActivity::class.java), 9)
                     }
                 }
             } catch (_: Exception) {
-                runOnUiThread {
+                runIfAlive {
                     showM3uLoginError()
                 }
             }
@@ -352,7 +330,7 @@ class MainActivity: Activity() {
             try {
                 val (list, summary) = api.categories(modeSeries)
 
-                runOnUiThread {
+                runIfAlive {
                     b.progress.visibility = View.GONE
                     serverCategories = list
 
@@ -376,7 +354,7 @@ class MainActivity: Activity() {
                     }
                 }
             } catch (e: Exception) {
-                runOnUiThread {
+                runIfAlive {
                     val msg = e.message.orEmpty()
                     if (
                         msg.contains("aguardando ativ", true) ||
@@ -461,7 +439,7 @@ class MainActivity: Activity() {
             try {
                 val list = api.items(modeSeries, c.id)
 
-                runOnUiThread {
+                runIfAlive {
                     b.progress.visibility = View.GONE
                     posters.submit(list)
                     b.status.text = "${c.name} • ${list.size} títulos"
@@ -474,13 +452,13 @@ class MainActivity: Activity() {
                     }
                 }
             } catch (_: Exception) {
-                runOnUiThread { showM3uLoginError() }
+                runIfAlive { showM3uLoginError() }
             }
         }
     }
 
     private fun focusSelectedCategory() {
-        if (touchDevice) return
+        if (touchDevice && b.root.isInTouchMode) return
         val pos = cats.selectedPosition().coerceAtLeast(0)
         b.categories.scrollToPosition(pos)
         b.categories.postDelayed({
@@ -659,6 +637,22 @@ class MainActivity: Activity() {
 
             else -> refreshCategoryBar()
         }
+    }
+
+    private fun runIfAlive(action: () -> Unit) {
+        runOnUiThread {
+            if (!isFinishing && !isDestroyed && !pool.isShutdown) action()
+        }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (touchDevice && event.action == KeyEvent.ACTION_DOWN && event.keyCode in listOf(
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER)) {
+            b.root.findViewById<View>(R.id.mobileHeader)?.visibility = View.VISIBLE
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

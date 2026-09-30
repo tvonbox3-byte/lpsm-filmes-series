@@ -1,0 +1,19 @@
+LPSM FILMES & SÉRIES 1.8.11 — CONTROLE E ABERTURA NO CELULAR
+
+- Navegação por controle não é mais desativada apenas porque o dispositivo tem tela sensível ao toque. O foco automático fica suspenso somente durante navegação por toque.
+- Ao usar setas ou OK no layout móvel, o cabeçalho reaparece.
+- TV e dispositivos com recursos Leanback/Television usam o layout de controle remoto.
+- Consultas da Home não atualizam nem agendam trabalho em uma Activity já encerrada, inclusive durante rotação do celular.
+- Removida a pré-carga do catálogo descartada desde a retirada do cache, reduzindo trabalho e uso de memória na abertura.
+- Mantém o layout móvel, a recarga ao retornar e os dados pessoais da 1.8.10.
+
+ENVIO:
+Envie apenas a pasta android à raiz do repositório, substituindo arquivos de mesmo nome. Não é necessário atualizar o backend no Render.
+
+COMMIT:
+LPSM Filmes e Séries 1.8.11 - corrige controle e abertura no celular
+
+Aguarde GitHub Actions ficar verde e instale a atualização sem desinstalar o app anterior.
+
+VERIFICAÇÃO:
+XMLs e fluxos alterados revisados. A compilação e os testes no aparelho ainda dependem de GitHub Actions e do APK instalado. Sem o registro da falha do celular não é possível confirmar qual exceção causou o fechamento informado. Teste abertura, rotação, entrada em séries, retorno de outro app e navegação com setas/OK.
