@@ -30,6 +30,7 @@ class SeriesActivity : Activity() {
     private lateinit var seasonsAdapter: SeasonAdapter
     private lateinit var episodesAdapter: EpisodeAdapter
     private var currentSeason: Season? = null
+    private var restoredSeasonNumber: Int? = null
 
     private var seriesNameValue = "Série"
     private var seriesImageValue: String? = null
@@ -42,8 +43,9 @@ class SeriesActivity : Activity() {
         super.onCreate(savedInstanceState)
         foregroundGeneration = (application as VodApplication).foregroundGeneration
 
+        restoredSeasonNumber = savedInstanceState?.getInt("seasonNumber", -1)?.takeIf { it >= 0 }
         touchDevice = DeviceUi.isTouchDevice(this)
-        if (touchDevice) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (!touchDevice) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         b = if (touchDevice) {
             ActivitySeriesBinding.bind(layoutInflater.inflate(R.layout.activity_series_mobile, null))
         } else {
@@ -62,7 +64,7 @@ class SeriesActivity : Activity() {
         seriesAdultValue = intent.getBooleanExtra("adult", false)
 
         b.seriesTitle.text = name
-        b.seriesPoster.load(image) { crossfade(true) }
+        b.seriesPoster.load(image) { size(320, 480); crossfade(true) }
         b.seriesSubtitle.text = "Carregando temporadas..."
 
         seasonsAdapter = SeasonAdapter(
@@ -146,7 +148,9 @@ class SeriesActivity : Activity() {
                         "$episodeCount episódio${if (episodeCount == 1) "" else "s"}"
 
                     seasonsAdapter.submit(seasons)
-                    showSeason(seasons.first(), focusEpisodes = false)
+                    val selectedIndex = seasons.indexOfFirst { it.number == restoredSeasonNumber }.coerceAtLeast(0)
+                    seasonsAdapter.select(selectedIndex, notify = false)
+                    showSeason(seasons[selectedIndex], focusEpisodes = false)
 
                     b.seasons.postDelayed({
                         focusSelectedSeason()
@@ -170,6 +174,7 @@ class SeriesActivity : Activity() {
 
     private fun showSeason(season: Season, focusEpisodes: Boolean) {
         currentSeason = season
+        restoredSeasonNumber = season.number
         episodesAdapter.submit(season.episodes)
 
         b.episodeHeader.text =
@@ -260,6 +265,11 @@ class SeriesActivity : Activity() {
         }
 
         return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("seasonNumber", currentSeason?.number ?: restoredSeasonNumber ?: -1)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {

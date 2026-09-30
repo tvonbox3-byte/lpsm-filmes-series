@@ -1,0 +1,38 @@
+LPSM Filmes e Séries 1.8.14 - Celular e TV Box
+
+O QUE FOI AJUSTADO
+- O catálogo, as séries e a ativação não forçam paisagem no manifesto para depois desfazer a orientação no celular. TV Box continua em paisagem.
+- Capas têm limite de resolução decodificada; o destaque oculto no celular não carrega uma segunda imagem.
+- Celular mantém menos capas fora da tela e usa buffer de vídeo de até aproximadamente 16 MiB para os dados de mídia. Esse limite não representa toda a memória usada pelo player.
+- Player libera buffer e decodificador ao ficar em segundo plano e recupera a posição ao voltar. Android antigo usa onPause/onResume; Android 7+ usa onStop/onStart.
+- Seleção de filmes/séries, categoria e temporada é restaurada após recriação da tela.
+- Heartbeat e verificação periódica não continuam agendando tarefas enquanto a tela principal está pausada.
+- Decodificador alternativo é permitido quando existe outro compatível no aparelho. Não acrescenta codecs que o aparelho não tem.
+
+VALIDAÇÃO
+- Gradle 8.9 / Java 17: clean assembleDebug lintDebug concluído com sucesso.
+- APK de debug gerado; análise estática sem erros bloqueadores (há avisos).
+- XMLs e IDs/tipos das telas móveis conferidos.
+- Controle, temporadas e consultas de catálogo comparados com a 1.8.13 e preservados.
+- Banner de inicialização da TV incluído e uso de APIs do Media3 declarado corretamente.
+- Não há celular/TV Box conectado para teste físico.
+
+PRESERVADO
+- RemoteConfirm e navegação lateral das temporadas, categorias e episódios.
+- Consultas de catálogo e episódios, identificação MAC, ativação, favoritos e histórico.
+- Buffer da TV Box usado na 1.8.13.
+- Painel/backend: nenhum arquivo alterado.
+
+COMO ENVIAR
+1. Extraia este ZIP.
+2. Atualize a pasta android e .github/workflows/build-apk.yml do mesmo repositório GitHub.
+3. Nome do commit: LPSM Filmes e Séries 1.8.14 - celular e TV Box [teste]
+4. Não substitua a assinatura nem limpe os dados do app; instale por cima da versão anterior.
+5. Não é necessário alterar o Render.
+
+ANTES DOS CLIENTES
+Sem o relatório do aparelho, as causas exatas do fechamento informado continuam sem confirmação. Estas correções tratam riscos encontrados no código; não substituem teste no aparelho.
+Teste no celular que fechava e na TV Box: abrir o catálogo; rolar capas; buscar; abrir uma série; mudar temporadas; reproduzir; voltar; girar celular; sair e retornar.
+Se fechar novamente, reabra e use COPIAR ERRO para colar o relatório na conversa. Se o Android matar o processo por falta de memória, o relatório Java pode não existir.
+O workflow incluído mantém a publicação automática normal, mas pula a etapa Publicar canal automatico quando o commit contém [teste]. Este primeiro commit gera o APK assinado somente no artefato LPSM-Filmes-Series-RELEASE do Actions. Baixe esse artefato e instale o APK por cima no seu celular e na sua TV Box.
+Depois de confirmar no aparelho, envie um novo commit sem [teste] para gerar/publicar a atualização normal. A execução manual do workflow continua publicando como antes; para este teste use o push com [teste].

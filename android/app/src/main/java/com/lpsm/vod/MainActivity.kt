@@ -67,9 +67,17 @@ class MainActivity: Activity() {
             updateHandler.postDelayed(this, 60 * 1000L)
         }
     }
+    private var heartbeatRunning = false
     private val heartbeat = object : Runnable {
         override fun run() {
-            pool.execute { DeviceApi.heartbeat(this@MainActivity) }
+            if (isFinishing || isDestroyed || pool.isShutdown) return
+            if (!heartbeatRunning) {
+                heartbeatRunning = true
+                pool.execute {
+                    try { DeviceApi.heartbeat(applicationContext) }
+                    finally { heartbeatHandler.post { heartbeatRunning = false } }
+                }
+            }
             heartbeatHandler.postDelayed(this, 30000)
         }
     }
@@ -77,8 +85,10 @@ class MainActivity: Activity() {
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
         foregroundGeneration = (application as VodApplication).foregroundGeneration
+        modeSeries = s?.getBoolean("modeSeries", false) ?: false
+        currentCategoryId = s?.getString("categoryId")
         touchDevice = DeviceUi.isTouchDevice(this)
-        if (touchDevice) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (!touchDevice) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         b = if (touchDevice) {
             ActivityMainBinding.bind(layoutInflater.inflate(R.layout.activity_main_mobile, null))
         } else {
@@ -106,7 +116,7 @@ class MainActivity: Activity() {
         b.grid.layoutManager = GridLayoutManager(this, columns)
         b.grid.adapter = posters
         b.grid.setHasFixedSize(true)
-        b.grid.setItemViewCacheSize(columns * 3)
+        b.grid.setItemViewCacheSize(if (touchDevice) columns else columns * 3)
 
         b.moviesTab.setOnClickListener { switchMode(false) }
         b.seriesTab.setOnClickListener { switchMode(true) }
@@ -151,7 +161,6 @@ class MainActivity: Activity() {
         verifyAndLoad()
         // Verifica poucos segundos após abrir e continua verificando enquanto o app estiver em uso.
         updateHandler.postDelayed(updateCheck, 1500L)
-        heartbeatHandler.post(heartbeat)
     }
 
     private fun openSearch() {
@@ -345,7 +354,11 @@ class MainActivity: Activity() {
                         it.id != favoritesCategoryId
                     }
 
-                    if (firstServer != null) {
+                    val restoredCategory = display.firstOrNull { it.id == currentCategoryId }
+                    if (restoredCategory != null && !isAdult(restoredCategory.name)) {
+                        cats.select(restoredCategory)
+                        loadCategory(restoredCategory, focusGrid = false)
+                    } else if (firstServer != null) {
                         cats.select(firstServer)
                         loadCategory(firstServer, focusGrid = false)
                     } else if (display.isNotEmpty()) {
@@ -494,7 +507,11 @@ class MainActivity: Activity() {
             }
         }
 
-        b.heroPoster.load(item.image) { crossfade(true) }
+        // O painel de destaque fica oculto no celular: não decodifique uma segunda capa.
+        if (!touchDevice) b.heroPoster.load(item.image) {
+            size(320, 480)
+            crossfade(true)
+        }
     }
 
     private fun clearHero() {
@@ -671,6 +688,8 @@ class MainActivity: Activity() {
             foregroundGeneration = generation
             verifyAndLoad()
         }
+        heartbeatHandler.removeCallbacks(heartbeat)
+        heartbeatHandler.post(heartbeat)
         UpdateManager.onResume(this)
 
         // Segunda tentativa rápida ajuda TV Boxes que demoram para conectar ao Wi-Fi.
@@ -681,6 +700,18 @@ class MainActivity: Activity() {
     override fun onActivityResult(r: Int, c: Int, d: Intent?) {
         super.onActivityResult(r,c,d)
         if (r == 9 && c == RESULT_OK) verifyAndLoad()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("modeSeries", modeSeries)
+        outState.putString("categoryId", currentCategoryId)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onPause() {
+        heartbeatHandler.removeCallbacks(heartbeat)
+        updateHandler.removeCallbacks(updateCheck)
+        super.onPause()
     }
 
     override fun onDestroy() {

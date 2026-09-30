@@ -1,6 +1,7 @@
 package com.lpsm.vod
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -24,6 +25,7 @@ class SetupActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!DeviceUi.isTouchDevice(this)) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         b = ActivitySetupBinding.inflate(layoutInflater)
         setContentView(b.root)
         b.deviceCode.text = DeviceApi.deviceCode(this)

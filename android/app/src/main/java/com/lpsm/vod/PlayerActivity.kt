@@ -2,6 +2,7 @@ package com.lpsm.vod
 
 import android.app.Activity
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
@@ -12,6 +13,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.lpsm.vod.data.LocalLibrary
@@ -31,6 +33,8 @@ class PlayerActivity : Activity() {
     private var contentImage: String? = null
     private var contentModeSeries = false
     private var contentAdult = false
+    private var resumePositionMs = 0L
+    private var playWhenReadyValue = true
     private var headersValue: Map<String, String> = emptyMap()
 
     private val progressHandler = Handler(Looper.getMainLooper())
@@ -84,20 +88,35 @@ class PlayerActivity : Activity() {
 
         headersValue = headers.toMap()
 
+        resumePositionMs = savedInstanceState?.getLong("position")
+            ?: if (contentKey.isNotBlank()) library.resumePosition(contentKey) else 0L
+        playWhenReadyValue = savedInstanceState?.getBoolean("playing", true) ?: true
+    }
+
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+    private fun initializePlayer() {
+        if (player != null || urlValue.isBlank() || isFinishing || isDestroyed) return
         val httpFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15000)
             .setReadTimeoutMs(30000)
-            .setDefaultRequestProperties(headers)
+            .setDefaultRequestProperties(headersValue)
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
             .setDataSourceFactory(httpFactory)
 
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15000, 60000, 1500, 3000)
-            .build()
+        val loadControlBuilder = DefaultLoadControl.Builder()
+        if (DeviceUi.isTouchDevice(this)) {
+            loadControlBuilder.setBufferDurationsMs(10000, 30000, 1500, 3000)
+                .setTargetBufferBytes(16 * 1024 * 1024)
+                .setPrioritizeTimeOverSizeThresholds(false)
+        } else {
+            // Preserva o buffer que já funciona na TV Box.
+            loadControlBuilder.setBufferDurationsMs(15000, 60000, 1500, 3000)
+        }
+        val loadControl = loadControlBuilder.build()
 
-        player = ExoPlayer.Builder(this)
+        player = ExoPlayer.Builder(this, DefaultRenderersFactory(this).setEnableDecoderFallback(true))
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .build()
@@ -131,21 +150,15 @@ class PlayerActivity : Activity() {
                     }
                 })
 
-                exo.setMediaItem(mediaItem(url))
+                exo.setMediaItem(mediaItem(urlValue))
 
-                val resume =
-                    if (contentKey.isNotBlank()) {
-                        library.resumePosition(contentKey)
-                    } else {
-                        0L
-                    }
-
-                if (resume > 0L) exo.seekTo(resume)
+                if (resumePositionMs > 0L) exo.seekTo(resumePositionMs)
 
                 exo.prepare()
-                exo.playWhenReady = true
+                exo.playWhenReady = playWhenReadyValue
             }
 
+        progressHandler.removeCallbacks(progressSaver)
         progressHandler.postDelayed(progressSaver, 12_000L)
     }
 
@@ -185,16 +198,46 @@ class PlayerActivity : Activity() {
         )
     }
 
+    private fun releasePlayer() {
+        progressHandler.removeCallbacks(progressSaver)
+        val exo = player ?: return
+        resumePositionMs = exo.currentPosition.coerceAtLeast(0L)
+        playWhenReadyValue = exo.playWhenReady
+        saveProgress()
+        b.playerView.player = null
+        exo.release()
+        player = null
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (Build.VERSION.SDK_INT >= 24) initializePlayer()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (Build.VERSION.SDK_INT < 24) initializePlayer()
+    }
+
     override fun onPause() {
         saveProgress()
+        if (Build.VERSION.SDK_INT < 24) releasePlayer()
         super.onPause()
     }
 
+    override fun onStop() {
+        if (Build.VERSION.SDK_INT >= 24) releasePlayer()
+        super.onStop()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putLong("position", player?.currentPosition ?: resumePositionMs)
+        outState.putBoolean("playing", player?.playWhenReady ?: playWhenReadyValue)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onDestroy() {
-        progressHandler.removeCallbacksAndMessages(null)
-        saveProgress()
-        player?.release()
-        player = null
+        releasePlayer()
         super.onDestroy()
     }
 }

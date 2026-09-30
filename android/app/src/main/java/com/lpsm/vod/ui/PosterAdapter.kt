@@ -70,7 +70,9 @@ class PosterAdapter(
         }
 
         h.b.poster.load(item.image) {
-            crossfade(true)
+            // Limita a imagem decodificada mesmo quando a fonte envia capas enormes.
+            size(360, 540)
+            crossfade(!DeviceUi.isTouchDevice(h.b.root.context))
         }
 
         h.b.root.setOnClickListener { onClick(item) }
