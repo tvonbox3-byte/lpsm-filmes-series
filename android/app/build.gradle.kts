@@ -16,8 +16,8 @@ android {
 
         // No GitHub Actions, cada build recebe um versionCode crescente automaticamente.
         // Assim até correções mantendo o mesmo versionName aparecem como atualização.
-        versionCode = ciVersionCode ?: 37
-        versionName = "1.8.14"
+        versionCode = ciVersionCode ?: 38
+        versionName = "1.8.15"
     }
 
     buildFeatures { viewBinding = true }

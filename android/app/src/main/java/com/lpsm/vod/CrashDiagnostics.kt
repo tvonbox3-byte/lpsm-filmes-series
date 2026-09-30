@@ -23,7 +23,7 @@ object CrashDiagnostics {
                     .replace(Regex("https?://[^\\s]+"), "[link removido]")
                     .take(20000)
                 File(app.filesDir, FILE).writeText(
-                    "LPSM 1.8.14\nAndroid ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}\n" +
+                    "LPSM 1.8.15\nAndroid ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}\n" +
                         "Modelo: ${Build.MANUFACTURER} ${Build.MODEL}\nThread: ${thread.name}\n$stack"
                 )
             } catch (_: Throwable) { }

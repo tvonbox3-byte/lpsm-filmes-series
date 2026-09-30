@@ -16,14 +16,13 @@ import com.lpsm.vod.model.Episode
 import com.lpsm.vod.model.Season
 import com.lpsm.vod.ui.EpisodeAdapter
 import com.lpsm.vod.ui.SeasonAdapter
-import java.util.concurrent.Executors
 import org.json.JSONObject
 
 class SeriesActivity : Activity() {
     private var touchDevice = false
 
     private lateinit var b: ActivitySeriesBinding
-    private val pool = Executors.newFixedThreadPool(2)
+    private val pool = LifecycleExecutor(2)
     private var foregroundGeneration = 0
     @Volatile private var loadGeneration = 0
     private lateinit var api: CatalogApi
@@ -97,7 +96,7 @@ class SeriesActivity : Activity() {
     }
 
     private fun loadSeasons() {
-        if (loadingSeasons || seriesIdValue.isBlank()) return
+        if (isFinishing || isDestroyed || pool.isShutdown || loadingSeasons || seriesIdValue.isBlank()) return
 
         loadingSeasons = true
         val requestGeneration = ++loadGeneration
@@ -131,7 +130,7 @@ class SeriesActivity : Activity() {
             }
 
             runOnUiThread {
-                if (isFinishing || isDestroyed || requestGeneration != loadGeneration) return@runOnUiThread
+                if (isFinishing || isDestroyed || pool.isShutdown || requestGeneration != loadGeneration) return@runOnUiThread
                 loadingSeasons = false
                 b.progress.visibility = View.GONE
 

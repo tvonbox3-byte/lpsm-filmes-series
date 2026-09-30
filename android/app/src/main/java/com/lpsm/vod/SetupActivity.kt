@@ -8,11 +8,10 @@ import android.os.Looper
 import android.view.View
 import com.lpsm.vod.data.DeviceApi
 import com.lpsm.vod.databinding.ActivitySetupBinding
-import java.util.concurrent.Executors
 
 class SetupActivity : Activity() {
     private lateinit var b: ActivitySetupBinding
-    private val pool = Executors.newSingleThreadExecutor()
+    private val pool = LifecycleExecutor(1)
     private val handler = Handler(Looper.getMainLooper())
     @Volatile private var checking = false
 

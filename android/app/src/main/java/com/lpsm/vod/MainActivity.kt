@@ -28,14 +28,13 @@ import com.lpsm.vod.ui.CategoryAdapter
 import com.lpsm.vod.ui.PosterAdapter
 import java.text.Normalizer
 import java.util.Locale
-import java.util.concurrent.Executors
 import org.json.JSONObject
 
 class MainActivity: Activity() {
     private var touchDevice = false
     private var foregroundGeneration = 0
     private lateinit var b: ActivityMainBinding
-    private val pool = Executors.newFixedThreadPool(4)
+    private val pool = LifecycleExecutor(4)
     private val cats = CategoryAdapter(
         onClick = { selectCategory(it) },
         onDown = { loadCategory(it, focusGrid = true) }
@@ -63,6 +62,7 @@ class MainActivity: Activity() {
     private val updateHandler = Handler(Looper.getMainLooper())
     private val updateCheck = object : Runnable {
         override fun run() {
+            if (!canLoad()) return
             UpdateManager.check(this@MainActivity)
             updateHandler.postDelayed(this, 60 * 1000L)
         }
@@ -202,6 +202,7 @@ class MainActivity: Activity() {
     }
 
     private fun searchCatalog(query: String) {
+        if (!canLoad()) return
         b.progress.visibility = View.VISIBLE
         b.sectionTitle.text = "Busca"
         b.status.text = "Pesquisando “$query”..."
@@ -269,6 +270,7 @@ class MainActivity: Activity() {
     }
 
     private fun verifyAndLoad() {
+        if (!canLoad()) return
         b.progress.visibility = View.VISIBLE
 
         b.status.text = "Preparando seu catálogo..."
@@ -331,6 +333,7 @@ class MainActivity: Activity() {
     }
 
     private fun loadCategories() {
+        if (!canLoad()) return
         b.progress.visibility = View.VISIBLE
         b.status.text = if (modeSeries) "Carregando séries..." else "Carregando filmes..."
         posters.submit(emptyList())
@@ -402,6 +405,7 @@ class MainActivity: Activity() {
     }
 
     private fun loadCategory(c: Category, focusGrid: Boolean) {
+        if (!canLoad()) return
         cats.select(c)
         currentCategoryId = c.id
         currentCategoryAdult = false
@@ -656,9 +660,11 @@ class MainActivity: Activity() {
         }
     }
 
+    private fun canLoad(): Boolean = !isFinishing && !isDestroyed && !pool.isShutdown
+
     private fun runIfAlive(action: () -> Unit) {
         runOnUiThread {
-            if (!isFinishing && !isDestroyed && !pool.isShutdown) action()
+            if (canLoad()) action()
         }
     }
 
@@ -715,9 +721,9 @@ class MainActivity: Activity() {
     }
 
     override fun onDestroy() {
+        pool.shutdownNow()
         heartbeatHandler.removeCallbacksAndMessages(null)
         updateHandler.removeCallbacksAndMessages(null)
-        pool.shutdownNow()
         super.onDestroy()
     }
 }
