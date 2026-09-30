@@ -30,6 +30,7 @@ import java.util.concurrent.Executors
 import org.json.JSONObject
 
 class MainActivity: Activity() {
+    private var foregroundGeneration = 0
     private lateinit var b: ActivityMainBinding
     private val pool = Executors.newFixedThreadPool(4)
     private val cats = CategoryAdapter(
@@ -72,6 +73,7 @@ class MainActivity: Activity() {
 
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
+        foregroundGeneration = (application as VodApplication).foregroundGeneration
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
         api = CatalogApi(this)
@@ -646,6 +648,11 @@ class MainActivity: Activity() {
 
     override fun onResume() {
         super.onResume()
+        val generation = (application as VodApplication).foregroundGeneration
+        if (generation != foregroundGeneration) {
+            foregroundGeneration = generation
+            verifyAndLoad()
+        }
         UpdateManager.onResume(this)
 
         // Segunda tentativa rápida ajuda TV Boxes que demoram para conectar ao Wi-Fi.

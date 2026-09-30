@@ -1,0 +1,18 @@
+LPSM FILMES & SÉRIES 1.8.9 — SEM CACHE DO CATÁLOGO
+
+- Apaga os diretórios de cache do catálogo das versões anteriores ao abrir e ao colocar o app em segundo plano.
+- Categorias, busca, filmes, temporadas e episódios são consultados pela rede; não são gravados em cache local nem recuperados de uma resposta antiga.
+- Ao voltar de outro app, a Home verifica a ativação e carrega novamente o catálogo. Se você voltar na tela de uma série, ela recarrega temporadas e episódios.
+- Respostas de tentativas anteriores da tela de séries não substituem uma nova consulta.
+- MAC, favoritos e continuar assistindo são preservados.
+
+A captura enviada mostra "Aguardando ativação no painel". Limpar cache não ativa um aparelho: confirme o MAC do app no painel, a ativação e a lista M3U configurada. Se o Render reiniciou sem dados locais, abra o painel no navegador que contém o backup e restaure os dados. Algumas séries abriam porque os episódios antigos estavam salvos no app; agora a informação será consultada no servidor.
+
+ENVIO:
+Extraia o ZIP e envie android e backend à raiz do repositório, substituindo os arquivos de mesmo nome. Aguarde Actions ficar verde, atualize o backend no Render e instale o APK 1.8.9 sem desinstalar o anterior.
+
+COMMIT:
+LPSM Filmes e Séries 1.8.9 - limpa cache e recarrega ao retornar
+
+VERIFICAÇÃO:
+Os testes existentes do backend passaram. Não foi possível compilar o Android neste ambiente; valide a compilação na GitHub Actions e teste no aparelho abrir uma série, sair para a tela inicial do Android e retornar ao app.

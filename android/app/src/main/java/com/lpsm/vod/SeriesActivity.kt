@@ -21,7 +21,9 @@ import org.json.JSONObject
 class SeriesActivity : Activity() {
 
     private lateinit var b: ActivitySeriesBinding
-    private val pool = Executors.newSingleThreadExecutor()
+    private val pool = Executors.newFixedThreadPool(2)
+    private var foregroundGeneration = 0
+    @Volatile private var loadGeneration = 0
     private lateinit var api: CatalogApi
     private lateinit var seasonsAdapter: SeasonAdapter
     private lateinit var episodesAdapter: EpisodeAdapter
@@ -36,6 +38,7 @@ class SeriesActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        foregroundGeneration = (application as VodApplication).foregroundGeneration
 
         b = ActivitySeriesBinding.inflate(layoutInflater)
         setContentView(b.root)
@@ -87,7 +90,11 @@ class SeriesActivity : Activity() {
         if (loadingSeasons || seriesIdValue.isBlank()) return
 
         loadingSeasons = true
+        val requestGeneration = ++loadGeneration
         loadFailed = false
+        currentSeason = null
+        seasonsAdapter.submit(emptyList())
+        episodesAdapter.submit(emptyList())
         b.progress.visibility = View.VISIBLE
         b.seriesSubtitle.text = "Carregando temporadas..."
 
@@ -96,6 +103,7 @@ class SeriesActivity : Activity() {
             var lastError: Exception? = null
 
             for (attempt in 1..3) {
+                if (requestGeneration != loadGeneration || Thread.currentThread().isInterrupted) return@execute
                 try {
                     loaded = api.seasons(seriesIdValue)
                     if (!loaded.isNullOrEmpty()) break
@@ -113,6 +121,7 @@ class SeriesActivity : Activity() {
             }
 
             runOnUiThread {
+                if (isFinishing || isDestroyed || requestGeneration != loadGeneration) return@runOnUiThread
                 loadingSeasons = false
                 b.progress.visibility = View.GONE
 
@@ -244,7 +253,18 @@ class SeriesActivity : Activity() {
     }
 
     override fun onDestroy() {
+        loadGeneration++
         pool.shutdownNow()
         super.onDestroy()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val generation = (application as VodApplication).foregroundGeneration
+        if (generation != foregroundGeneration) {
+            foregroundGeneration = generation
+            loadingSeasons = false
+            loadSeasons()
+        }
     }
 }

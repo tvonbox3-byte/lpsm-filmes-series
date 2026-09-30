@@ -11,72 +11,20 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.security.MessageDigest
 
 class CatalogApi(private val context: Context) {
     private val mac get() = DeviceApi.deviceCode(context)
-    private val cacheDir by lazy { File(context.filesDir, "vod_catalog_cache_v183").apply { mkdirs() } }
-    private val legacyCacheDir by lazy { File(context.filesDir, "vod_catalog_cache").apply { mkdirs() } }
-    private val cacheTtlMs = 24L * 60L * 60L * 1000L
-    private val seriesCacheTtlMs = 7L * 24L * 60L * 60L * 1000L
-
-    private fun cacheKey(path: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(path.toByteArray())
-            .joinToString("") { "%02x".format(it) }
-
-    private fun cacheFile(path: String): File = File(cacheDir, "${cacheKey(path)}.json")
-    private fun legacyCacheFile(path: String): File = File(legacyCacheDir, "${cacheKey(path)}.json")
-
-    private fun readJsonFile(f: File, allowStale: Boolean): JSONObject? {
-        if (!f.exists()) return null
-        if (!allowStale && System.currentTimeMillis() - f.lastModified() > cacheTtlMs) return null
-        return try { JSONObject(f.readText()) } catch (_: Exception) { null }
-    }
-
-    private fun readCache(path: String, allowStale: Boolean): JSONObject? {
-        readJsonFile(cacheFile(path), allowStale)?.let { return it }
-        return readJsonFile(legacyCacheFile(path), true)
-    }
-
-    private fun readCacheWithMaxAge(
-        path: String,
-        maxAgeMs: Long
-    ): JSONObject? {
-        val current = cacheFile(path)
-        if (
-            current.exists() &&
-            System.currentTimeMillis() - current.lastModified() <= maxAgeMs
-        ) {
-            try {
-                return JSONObject(current.readText())
-            } catch (_: Exception) { }
-        }
-
-        return null
-    }
-
-    private fun writeCache(path: String, raw: String) {
-        try { cacheFile(path).writeText(raw) } catch (_: Exception) { }
-    }
-
-    fun hasCachedCategories(series: Boolean): Boolean {
-        val kind = if (series) "series" else "movie"
-        val path = "/api/device/catalog/categories?mac=${enc(mac)}&kind=$kind"
-        return cacheFile(path).exists() || legacyCacheFile(path).exists()
-    }
-
-    private fun get(path: String): JSONObject {
-        if (path.contains("/api/device/catalog/series")) {
-            readCacheWithMaxAge(path, seriesCacheTtlMs)?.let {
-                if (hasEpisodes(it)) return it
+    companion object {
+        fun clearCatalogCache(context: Context) {
+            listOf("vod_catalog_cache_v183", "vod_catalog_cache").forEach { name ->
+                File(context.filesDir, name).deleteRecursively()
             }
         }
+    }
 
-        readCache(path, allowStale = false)?.let {
-            if (!path.contains("/api/device/catalog/series") || hasEpisodes(it)) return it
-        }
+    fun hasCachedCategories(series: Boolean): Boolean = false
 
+    private fun get(path: String): JSONObject {
         try {
             val url = URL("${DeviceApi.backendUrl(context)}$path")
             val c = url.openConnection() as HttpURLConnection
@@ -124,17 +72,11 @@ class CatalogApi(private val context: Context) {
                 if (path.contains("/api/device/catalog/series") && !hasEpisodes(root)) {
                     throw IllegalStateException("Servidor de episódios temporariamente indisponível")
                 }
-                writeCache(path, raw)
                 return root
             } finally {
                 c.disconnect()
             }
         } catch (e: Exception) {
-            // Se já houve uma carga anterior, mantém o aparelho funcionando.
-            readCache(path, allowStale = true)?.let {
-                if (!path.contains("/api/device/catalog/series") || hasEpisodes(it)) return it
-            }
-
             throw e
         }
     }
