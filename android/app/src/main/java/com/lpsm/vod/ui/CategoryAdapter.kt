@@ -69,7 +69,9 @@ class CategoryAdapter(
                 .start()
         }
 
+        val confirm = RemoteConfirm()
         h.b.root.setOnKeyListener { _, keyCode, event ->
+            if (confirm.handle(h.b.root, keyCode, event)) return@setOnKeyListener true
             if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 // O primeiro toque entra na grade. Repetições de tecla segurada
                 // são consumidas para não recarregar a categoria e voltar ao topo.

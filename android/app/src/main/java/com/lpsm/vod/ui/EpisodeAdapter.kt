@@ -43,7 +43,9 @@ class EpisodeAdapter(
             v.translationZ = if (focused) 12f else 0f
         }
 
+        val confirm = RemoteConfirm()
         h.b.root.setOnKeyListener { _, keyCode, event ->
+            if (confirm.handle(h.b.root, keyCode, event)) return@setOnKeyListener true
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
 
             val p = h.bindingAdapterPosition

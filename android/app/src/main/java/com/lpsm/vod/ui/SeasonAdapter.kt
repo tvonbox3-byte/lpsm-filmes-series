@@ -62,15 +62,18 @@ class SeasonAdapter(
                 .start()
 
             if (focused) {
-                val p = h.bindingAdapterPosition
-                if (p != RecyclerView.NO_POSITION && p != selected) {
-                    select(p)
+                // O foco pode mudar durante o layout; atualize a lista depois dele.
+                h.b.root.post {
+                    val p = h.bindingAdapterPosition
+                    if (h.b.root.hasFocus() && p != RecyclerView.NO_POSITION && p != selected) select(p)
                 }
             }
         }
 
         // Seta para baixo entra diretamente nos episódios da temporada selecionada.
+        val confirm = RemoteConfirm()
         h.b.root.setOnKeyListener { _, keyCode, event ->
+            if (confirm.handle(h.b.root, keyCode, event)) return@setOnKeyListener true
             if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 val p = h.bindingAdapterPosition
                 if (p != RecyclerView.NO_POSITION) {

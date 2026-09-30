@@ -79,7 +79,7 @@ class PosterAdapter(
             true
         }
 
-        var longOkHandled = false
+        val confirm = RemoteConfirm(allowLongPress = true)
 
         h.b.root.onFocusChangeListener = View.OnFocusChangeListener { v, focused ->
             v.animate()
@@ -98,30 +98,7 @@ class PosterAdapter(
             val p = h.bindingAdapterPosition
             if (p == RecyclerView.NO_POSITION) return@setOnKeyListener false
 
-            if (
-                keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
-                keyCode == KeyEvent.KEYCODE_ENTER
-            ) {
-                when (event.action) {
-                    KeyEvent.ACTION_DOWN -> {
-                        if (
-                            !longOkHandled &&
-                            (event.isLongPress || event.repeatCount >= 1)
-                        ) {
-                            longOkHandled = true
-                            onLongClick(item)
-                            return@setOnKeyListener true
-                        }
-                    }
-
-                    KeyEvent.ACTION_UP -> {
-                        if (longOkHandled) {
-                            longOkHandled = false
-                            return@setOnKeyListener true
-                        }
-                    }
-                }
-            }
+            if (confirm.handle(h.b.root, keyCode, event)) return@setOnKeyListener true
 
             // Botão MENU também serve como atalho de favorito em controles
             // que não enviam corretamente o "OK segurado".

@@ -33,7 +33,7 @@ class SetupActivity : Activity() {
     }
 
     private fun checkActivation() {
-        if (checking) return
+        if (checking || isFinishing || isDestroyed || pool.isShutdown) return
         checking = true
         b.progress.visibility = View.VISIBLE
         b.msg.text = "Registrando aparelho no painel..."
@@ -42,6 +42,7 @@ class SetupActivity : Activity() {
                 DeviceApi.heartbeat(this)
                 val result = DeviceApi.fetchActivation(this)
                 runOnUiThread {
+                    if (isFinishing || isDestroyed || pool.isShutdown) return@runOnUiThread
                     if (result.active) {
                         b.msg.text = "Ativado. Abrindo catálogo M3U..."
                         setResult(RESULT_OK)
@@ -53,6 +54,7 @@ class SetupActivity : Activity() {
                 }
             } catch (_: Exception) {
                 runOnUiThread {
+                    if (isFinishing || isDestroyed || pool.isShutdown) return@runOnUiThread
                     b.msg.text = "Servidor temporariamente indisponível. Tentaremos novamente automaticamente."
                 }
             } finally {

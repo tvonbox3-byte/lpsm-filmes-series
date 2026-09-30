@@ -13,6 +13,7 @@ class VodApplication : Application(), Application.ActivityLifecycleCallbacks {
 
     override fun onCreate() {
         super.onCreate()
+        CrashDiagnostics.install(this)
         CatalogApi.clearCatalogCache(this)
         registerActivityLifecycleCallbacks(this)
     }

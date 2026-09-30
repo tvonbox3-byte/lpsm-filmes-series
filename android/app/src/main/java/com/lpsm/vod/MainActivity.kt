@@ -665,6 +665,7 @@ class MainActivity: Activity() {
 
     override fun onResume() {
         super.onResume()
+        CrashDiagnostics.showPending(this)
         val generation = (application as VodApplication).foregroundGeneration
         if (generation != foregroundGeneration) {
             foregroundGeneration = generation
