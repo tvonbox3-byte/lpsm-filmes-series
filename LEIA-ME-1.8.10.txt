@@ -1,0 +1,18 @@
+LPSM FILMES & SÉRIES 1.8.10 — CELULAR
+
+- Detecta dispositivos de toque e usa telas compactas para catálogo e séries.
+- Permite catálogo e séries na orientação do celular; player continua horizontal.
+- Cabeçalho do catálogo recolhe quando você arrasta as capas para baixo e reaparece ao arrastar para cima.
+- Grade adapta o número de capas à largura disponível.
+- Remove mudanças automáticas de foco no celular e evita redimensionar as capas durante a rolagem.
+- Mantém o layout e as ações de controle remoto na TV.
+- Mantém recarga ao retornar, MAC, favoritos e continuar assistindo da 1.8.9.
+
+Envie APENAS a pasta android deste ZIP para a raiz do repositório, substituindo os arquivos de mesmo nome. O backend não mudou; não é necessário novo deploy no Render.
+
+COMMIT:
+LPSM Filmes e Séries 1.8.10 - adapta navegação para celular
+
+Aguarde GitHub Actions ficar verde e instale o APK atualizado sem desinstalar o anterior. Verifique rolagem, toque nas capas, troca de categoria e abertura de episódios no celular.
+
+Verificação local: XMLs válidos e IDs/tipos das telas móveis compatíveis com ViewBinding. A compilação Android e a interação no aparelho ainda dependem da GitHub Actions e do APK instalado.

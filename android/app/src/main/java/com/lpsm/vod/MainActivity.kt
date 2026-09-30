@@ -12,6 +12,8 @@ import android.widget.EditText
 import android.widget.Toast
 import android.view.inputmethod.InputMethodManager
 import android.content.Context
+import android.content.pm.ActivityInfo
+import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import coil3.load
@@ -30,6 +32,7 @@ import java.util.concurrent.Executors
 import org.json.JSONObject
 
 class MainActivity: Activity() {
+    private var touchDevice = false
     private var foregroundGeneration = 0
     private lateinit var b: ActivityMainBinding
     private val pool = Executors.newFixedThreadPool(4)
@@ -74,7 +77,13 @@ class MainActivity: Activity() {
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
         foregroundGeneration = (application as VodApplication).foregroundGeneration
-        b = ActivityMainBinding.inflate(layoutInflater)
+        touchDevice = DeviceUi.isTouchDevice(this)
+        if (touchDevice) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        b = if (touchDevice) {
+            ActivityMainBinding.bind(layoutInflater.inflate(R.layout.activity_main_mobile, null))
+        } else {
+            ActivityMainBinding.inflate(layoutInflater)
+        }
         setContentView(b.root)
         api = CatalogApi(this)
         library = LocalLibrary(this)
@@ -85,6 +94,7 @@ class MainActivity: Activity() {
         // Grade estilo catálogo de streaming: várias capas visíveis ao mesmo tempo.
         val widthDp = resources.configuration.screenWidthDp
         val columns = when {
+            touchDevice -> (widthDp / 120).coerceIn(2, 6)
             widthDp >= 1200 -> 8
             widthDp >= 1000 -> 7
             widthDp >= 800 -> 6
@@ -126,6 +136,17 @@ class MainActivity: Activity() {
         b.grid.preserveFocusAfterLayout = true
         b.categories.itemAnimator = null
         b.categories.preserveFocusAfterLayout = true
+
+        if (touchDevice) {
+            val header = b.root.findViewById<View>(R.id.mobileHeader)
+            b.grid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) {
+                    if (view.scrollState != RecyclerView.SCROLL_STATE_DRAGGING) return
+                    if (dy > 8 && header.visibility == View.VISIBLE) header.visibility = View.GONE
+                    if (dy < -8 && header.visibility == View.GONE) header.visibility = View.VISIBLE
+                }
+            })
+        }
 
         verifyAndLoad()
         // Verifica poucos segundos após abrir e continua verificando enquanto o app estiver em uso.
@@ -203,6 +224,7 @@ class MainActivity: Activity() {
     }
 
     private fun focusFirstPoster() {
+        if (touchDevice) return
         b.grid.scrollToPosition(0)
         b.grid.postDelayed({
             b.grid.findViewHolderForAdapterPosition(0)
@@ -458,6 +480,7 @@ class MainActivity: Activity() {
     }
 
     private fun focusSelectedCategory() {
+        if (touchDevice) return
         val pos = cats.selectedPosition().coerceAtLeast(0)
         b.categories.scrollToPosition(pos)
         b.categories.postDelayed({

@@ -9,6 +9,7 @@ import coil3.load
 import coil3.request.crossfade
 import com.lpsm.vod.databinding.ItemPosterBinding
 import com.lpsm.vod.model.PosterItem
+import com.lpsm.vod.DeviceUi
 
 class PosterAdapter(
     private val onClick: (PosterItem) -> Unit,
@@ -36,8 +37,16 @@ class PosterAdapter(
     override fun getItemId(position: Int): Long =
         items.getOrNull(position)?.id?.hashCode()?.toLong() ?: RecyclerView.NO_ID
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        VH(ItemPosterBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+        val holder = VH(ItemPosterBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+        if (DeviceUi.isTouchDevice(parent.context)) {
+            val density = parent.resources.displayMetrics.density
+            val cardWidth = (parent.width - parent.paddingLeft - parent.paddingRight) / spanCount
+            val imageWidth = cardWidth - (18 * density).toInt()
+            if (imageWidth > 0) holder.b.poster.layoutParams.height = (imageWidth * 1.5f).toInt()
+        }
+        return holder
+    }
 
     override fun getItemCount() = items.size
 
@@ -48,7 +57,7 @@ class PosterAdapter(
         h.b.poster.contentDescription = item.name
 
         // Capa padrão 2:3. Evita o aspecto "foto quadrada/recortada" que estava aparecendo.
-        h.b.poster.post {
+        if (!DeviceUi.isTouchDevice(h.b.root.context)) h.b.poster.post {
             val width = h.b.poster.width
             if (width > 0) {
                 val wanted = (width * 1.50f).toInt()

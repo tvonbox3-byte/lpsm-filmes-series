@@ -2,6 +2,7 @@ package com.lpsm.vod
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -19,6 +20,7 @@ import java.util.concurrent.Executors
 import org.json.JSONObject
 
 class SeriesActivity : Activity() {
+    private var touchDevice = false
 
     private lateinit var b: ActivitySeriesBinding
     private val pool = Executors.newFixedThreadPool(2)
@@ -40,7 +42,13 @@ class SeriesActivity : Activity() {
         super.onCreate(savedInstanceState)
         foregroundGeneration = (application as VodApplication).foregroundGeneration
 
-        b = ActivitySeriesBinding.inflate(layoutInflater)
+        touchDevice = DeviceUi.isTouchDevice(this)
+        if (touchDevice) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        b = if (touchDevice) {
+            ActivitySeriesBinding.bind(layoutInflater.inflate(R.layout.activity_series_mobile, null))
+        } else {
+            ActivitySeriesBinding.inflate(layoutInflater)
+        }
         setContentView(b.root)
         api = CatalogApi(this)
 
@@ -174,6 +182,7 @@ class SeriesActivity : Activity() {
     }
 
     private fun focusSelectedSeason() {
+        if (touchDevice) return
         val position = seasonsAdapter.selectedPosition().coerceAtLeast(0)
         b.seasons.scrollToPosition(position)
 
@@ -191,6 +200,7 @@ class SeriesActivity : Activity() {
     }
 
     private fun focusFirstEpisode() {
+        if (touchDevice) return
         b.episodes.scrollToPosition(0)
 
         b.episodes.postDelayed({

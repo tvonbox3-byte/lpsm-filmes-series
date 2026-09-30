@@ -1,0 +1,30 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/bg" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="8dp" android:paddingBottom="8dp">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:id="@+id/mobileHeader" android:orientation="vertical">
+    <TextView android:id="@+id/title" android:layout_width="match_parent" android:layout_height="32dp" android:layout_weight="0" android:text="LPSM FILMES &amp; SÉRIES" android:textColor="@color/text" android:textStyle="bold" android:textSize="18sp" />
+    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="48dp" android:scrollbars="none" android:fillViewport="true">
+      <LinearLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:orientation="horizontal">
+        <Button android:id="@+id/moviesTab" android:layout_width="92dp" android:layout_height="48dp" android:text="FILMES" android:focusable="true" android:background="@drawable/nav_button_bg" android:textColor="@color/text" android:layout_marginStart="4dp" android:textSize="12sp" />
+        <Button android:id="@+id/seriesTab" android:layout_width="92dp" android:layout_height="48dp" android:layout_marginStart="4dp" android:text="SÉRIES" android:focusable="true" android:background="@drawable/nav_button_bg" android:textColor="@color/text" android:textSize="12sp" />
+        <ImageButton android:id="@+id/searchBtn" android:layout_width="52dp" android:layout_height="48dp" android:layout_marginStart="4dp" android:padding="11dp" android:src="@drawable/ic_search" android:contentDescription="Pesquisar" android:focusable="true" android:clickable="true" android:background="@drawable/nav_button_bg" android:scaleType="centerInside" />
+        <Button android:id="@+id/settingsBtn" android:layout_width="92dp" android:layout_height="48dp" android:layout_marginStart="4dp" android:text="ATIVAÇÃO" android:focusable="true" android:background="@drawable/nav_button_bg" android:textColor="@color/text" android:textSize="12sp" />
+      </LinearLayout>
+    </HorizontalScrollView>
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="128dp" android:orientation="horizontal" android:background="@drawable/hero_bg" android:padding="12dp" android:visibility="gone">
+    <ImageView android:id="@+id/heroPoster" android:layout_width="76dp" android:layout_height="104dp" android:scaleType="centerCrop" android:background="@drawable/poster_placeholder" />
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical" android:paddingStart="17dp">
+      <TextView android:id="@+id/heroTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Escolha um título" android:textColor="@color/text" android:textStyle="bold" android:textSize="24sp" android:maxLines="2" android:ellipsize="end" />
+      <TextView android:id="@+id/heroMeta" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Navegue pelas capas com o controle remoto" android:textColor="@color/muted" android:textSize="14sp" />
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="← → ↑ ↓ para navegar  •  OK para abrir" android:textColor="@color/text" android:textSize="12sp" />
+    </LinearLayout>
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="34dp" android:layout_marginTop="6dp" android:gravity="center_vertical">
+    <TextView android:id="@+id/sectionTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Filmes" android:textColor="@color/text" android:textStyle="bold" android:textSize="16sp" />
+    <TextView android:id="@+id/status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="200dp" android:maxLines="1" android:ellipsize="end" android:textColor="@color/muted" android:textSize="11sp" />
+  </LinearLayout>
+  <androidx.recyclerview.widget.RecyclerView android:id="@+id/categories" android:layout_width="match_parent" android:layout_height="48dp" android:clipToPadding="false" android:paddingStart="2dp" android:paddingEnd="12dp" />
+  <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="3dp">
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/grid" android:layout_width="match_parent" android:layout_height="match_parent" android:clipToPadding="false" android:paddingStart="2dp" android:paddingEnd="2dp" android:paddingTop="4dp" android:paddingBottom="12dp" android:scrollbars="vertical" />
+    <ProgressBar android:id="@+id/progress" android:layout_width="52dp" android:layout_height="52dp" android:layout_gravity="center" android:visibility="gone" />
+  </FrameLayout>
+</LinearLayout>
