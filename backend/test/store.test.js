@@ -41,3 +41,23 @@ test('falha na gravação reverte alteração e permite tentar novamente', async
   await store.mutate(data => { data.clients.push({ mac: 'test', enabled: true }); });
   assert.equal(store.data.clients.length, 1);
 });
+
+ test('não aceita configuração parcial nem esconde erro do banco', async () => {
+  const names = ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_ROLE_KEY'];
+  const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  try {
+    for (const name of names) delete process.env[name];
+    process.env.SUPABASE_URL = 'https://example.test';
+    assert.throws(() => new Store('unused'), /Persistência incompleta/);
+    process.env.SUPABASE_SECRET_KEY = 'test';
+    const store = new Store('unused');
+    store.supabase = async () => { throw new Error('banco indisponível'); };
+    await assert.rejects(store.load(), /banco indisponível/);
+    assert.equal(store.useSupabase, true);
+  } finally {
+    for (const name of names) {
+      if (previous[name] === undefined) delete process.env[name];
+      else process.env[name] = previous[name];
+    }
+  }
+});

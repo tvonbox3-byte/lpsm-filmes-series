@@ -56,6 +56,12 @@
           <span id="storageBadge" class="badge">Verificando...</span>
         </div>
 
+        <details>
+          <summary>Como conectar a persistência online</summary>
+          <p class="hint">Primeiro baixe o backup dos cadastros. No SQL Editor do seu projeto Supabase, execute o SQL de configuração. No serviço backend do Render, configure SUPABASE_URL e SUPABASE_SECRET_KEY com os dados desse projeto. A chave deve ficar somente no servidor.</p>
+          <p class="hint">Depois do deploy, abra o painel neste mesmo navegador e confira a recuperação. Se necessário, use Restaurar backup. A confirmação é o indicador “Persistência online”.</p>
+          <a href="/persistencia.sql" download>Baixar SQL de configuração</a>
+        </details>
         <div class="actions">
           <button id="downloadBackup" class="ghost">
             Baixar backup

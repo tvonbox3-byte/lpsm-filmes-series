@@ -11,6 +11,9 @@ export class Store {
     this.queue = Promise.resolve();
     this.supabaseUrl = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
     this.supabaseKey = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+    if (Boolean(this.supabaseUrl) !== Boolean(this.supabaseKey)) {
+      throw new Error('Persistência incompleta: configure SUPABASE_URL e SUPABASE_SECRET_KEY juntas.');
+    }
   }
 
   get useSupabase() { return Boolean(this.supabaseUrl && this.supabaseKey); }

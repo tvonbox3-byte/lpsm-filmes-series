@@ -36,7 +36,7 @@ class VodApplication : Application(), Application.ActivityLifecycleCallbacks {
     }
 
     override fun onActivityCreated(activity: Activity, state: Bundle?) {}
-    override fun onActivityResumed(activity: Activity) {}
+    override fun onActivityResumed(activity: Activity) { ScreenAdjustment.attach(activity) }
     override fun onActivityPaused(activity: Activity) {}
     override fun onActivitySaveInstanceState(activity: Activity, state: Bundle) {}
     override fun onActivityDestroyed(activity: Activity) {}

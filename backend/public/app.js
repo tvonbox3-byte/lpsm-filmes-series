@@ -74,15 +74,15 @@ function updateBackupStatus(payload = readBrowserBackup()) {
     return;
   }
 
-  badge.textContent = 'Backup automático';
-  badge.classList.add('ok');
+  badge.textContent = 'Persistência online pendente';
+  badge.classList.remove('ok');
 
   const when = payload?.savedAt
     ? fmtDateTime(payload.savedAt)
     : 'ainda não criado';
 
   text.textContent =
-    `No Render gratuito, o painel mantém uma cópia automática neste navegador. Último backup: ${when}.`;
+    `O banco online ainda não está conectado. Há uma cópia neste navegador (último backup: ${when}), mas ela não substitui a persistência online.`;
 }
 
 async function maybeAutoRestore(serverState) {

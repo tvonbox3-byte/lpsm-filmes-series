@@ -1,6 +1,9 @@
 package com.lpsm.vod
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.view.View
+import androidx.media3.ui.AspectRatioFrameLayout
 import android.os.Bundle
 import android.os.Build
 import android.os.Handler
@@ -45,11 +48,17 @@ class PlayerActivity : Activity() {
         }
     }
 
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(b.root)
         library = LocalLibrary(this)
+        applyVideoFormat()
+        b.screenBtn.setOnClickListener { showScreenOptions() }
+        b.playerView.setControllerVisibilityListener(androidx.media3.ui.PlayerView.ControllerVisibilityListener { visibility ->
+            b.screenBtn.visibility = visibility
+        })
 
         val url = intent.getStringExtra("url")?.trim().orEmpty()
         if (url.isBlank()) {
@@ -160,6 +169,36 @@ class PlayerActivity : Activity() {
 
         progressHandler.removeCallbacks(progressSaver)
         progressHandler.postDelayed(progressSaver, 12_000L)
+    }
+
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+    private fun applyVideoFormat() {
+        val mode = getSharedPreferences("lpsm_screen_v1", MODE_PRIVATE).getInt("video_format", 0)
+        b.playerView.resizeMode = when (mode) {
+            1 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            2 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+    private fun showScreenOptions() {
+        val prefs = getSharedPreferences("lpsm_screen_v1", MODE_PRIVATE)
+        val options = arrayOf("Automático / encolher: vídeo inteiro", "Expandir: preencher com recorte", "Expandir: esticar", "Ajustar bordas do aplicativo")
+        AlertDialog.Builder(this)
+            .setTitle("Ajustar tela")
+            .setSingleChoiceItems(options, prefs.getInt("video_format", 0).coerceIn(0, 2)) { dialog, index ->
+                if (index < 3) {
+                    prefs.edit().putInt("video_format", index).apply()
+                    applyVideoFormat()
+                    dialog.dismiss()
+                } else {
+                    dialog.dismiss()
+                    ScreenAdjustment.show(this)
+                }
+            }
+            .setNegativeButton("VOLTAR", null)
+            .show()
     }
 
     private fun mediaItem(url: String): MediaItem = MediaItem.Builder()

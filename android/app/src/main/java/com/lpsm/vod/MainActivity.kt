@@ -120,8 +120,17 @@ class MainActivity: Activity() {
         b.moviesTab.setOnClickListener { switchMode(false) }
         b.seriesTab.setOnClickListener { switchMode(true) }
         b.searchBtn.setOnClickListener { openSearch() }
-        b.settingsBtn.text = "ATIVAÇÃO"
-        b.settingsBtn.setOnClickListener { startActivityForResult(Intent(this, SetupActivity::class.java), 9) }
+        b.settingsBtn.text = "AJUSTES"
+        b.settingsBtn.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Ajustes")
+                .setItems(arrayOf("Ajustar tela", "Ativação do aparelho")) { _, option ->
+                    if (option == 0) ScreenAdjustment.show(this)
+                    else startActivityForResult(Intent(this, SetupActivity::class.java), 9)
+                }
+                .setNegativeButton("VOLTAR", null)
+                .show()
+        }
 
         // Só atravessa entre as áreas no PRIMEIRO toque.
         // Quando o usuário segura a seta, os eventos repetidos ficam na área atual
