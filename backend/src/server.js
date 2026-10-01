@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { adultCategory, protectedItems } from './adult-policy.js';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -164,15 +165,17 @@ async function sourceCatalog(sourceUrl, kind = 'all', force = false) {
 }
 
 function sourceCategoryItems(catalog, kind, categoryId) {
-  return catalog?.provider === 'xtream'
+  const items = catalog?.provider === 'xtream'
     ? xtreamCategoryItems(catalog, kind, categoryId)
     : categoryItems(catalog, kind, categoryId);
+  return protectedItems(catalog, kind, categoryId, items);
 }
 
 function sourceSearch(catalog, kind, query) {
-  return catalog?.provider === 'xtream'
+  const items = catalog?.provider === 'xtream'
     ? xtreamSearch(catalog, kind, query)
     : searchCatalog(catalog, kind, query);
+  return protectedItems(catalog, kind, null, items);
 }
 
 async function sourceSeriesSeasons(
@@ -379,7 +382,8 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const catalog = await sourceCatalog(access.sourceUrl, kind);
-        const categories = kind === 'series' ? catalog.seriesCategories : catalog.movieCategories;
+        const categories = (kind === 'series' ? catalog.seriesCategories : catalog.movieCategories)
+          .map(c => ({ ...c, adult: adultCategory(c) }));
 
         if (!categories.length) {
           return json(res, 503, {

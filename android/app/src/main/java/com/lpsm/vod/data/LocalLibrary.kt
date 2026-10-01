@@ -56,7 +56,7 @@ class LocalLibrary(context: Context) {
         put("url", item.url ?: "")
         put("headers", headersToJson(item.headers))
         put("modeSeries", modeSeries)
-        put("adult", adult)
+        put("adult", adult || item.adult)
         put("updatedAt", System.currentTimeMillis())
     }
 
@@ -67,7 +67,8 @@ class LocalLibrary(context: Context) {
             image = o.optString("image").takeIf { it.isNotBlank() },
             isSeries = o.optBoolean("isSeries", false),
             url = o.optString("url").takeIf { it.isNotBlank() },
-            headers = headersFromJson(o.optJSONObject("headers"))
+            headers = headersFromJson(o.optJSONObject("headers")),
+            adult = o.optBoolean("adult", false)
         )
 
     fun isFavorite(id: String, modeSeries: Boolean): Boolean {
@@ -255,7 +256,8 @@ class LocalLibrary(context: Context) {
                 image = o.optString("image").takeIf { it.isNotBlank() },
                 isSeries = false,
                 url = o.optString("url").takeIf { it.isNotBlank() },
-                headers = headersFromJson(o.optJSONObject("headers"))
+                headers = headersFromJson(o.optJSONObject("headers")),
+            adult = o.optBoolean("adult", false)
             )
         }
 

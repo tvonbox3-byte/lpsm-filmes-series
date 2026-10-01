@@ -26,8 +26,6 @@ import com.lpsm.vod.model.Category
 import com.lpsm.vod.model.PosterItem
 import com.lpsm.vod.ui.CategoryAdapter
 import com.lpsm.vod.ui.PosterAdapter
-import java.text.Normalizer
-import java.util.Locale
 import org.json.JSONObject
 
 class MainActivity: Activity() {
@@ -45,6 +43,7 @@ class MainActivity: Activity() {
         onFocus = { showHero(it) },
         onUp = { focusSelectedCategory() }
     )
+    private var catalogGeneration = 0
     private var modeSeries = false
     private lateinit var api: CatalogApi
     private lateinit var library: LocalLibrary
@@ -203,16 +202,23 @@ class MainActivity: Activity() {
 
     private fun searchCatalog(query: String) {
         if (!canLoad()) return
+        val requestGeneration = ++catalogGeneration
+        val requestSeries = modeSeries
         b.progress.visibility = View.VISIBLE
         b.sectionTitle.text = "Busca"
         b.status.text = "Pesquisando “$query”..."
         posters.submit(emptyList())
+        clearHero()
         cats.clearSelection()
+        currentCategoryId = null
+        currentCategoryAdult = false
+        localAdultIds = emptySet()
 
         pool.execute {
             try {
-                val list = api.search(modeSeries, query)
+                val list = api.search(requestSeries, query).filterNot { it.adult || isAdult(it.name) }
                 runIfAlive {
+                    if (requestGeneration != catalogGeneration) return@runIfAlive
                     b.progress.visibility = View.GONE
                     posters.submit(list)
                     b.sectionTitle.text = "Resultados para “$query”"
@@ -224,11 +230,14 @@ class MainActivity: Activity() {
                     } else {
                         b.heroTitle.text = "Nenhum resultado"
                         b.heroMeta.text = "Tente outro nome."
-                        b.heroPoster.setImageDrawable(null)
+                        b.heroPoster.load(null)
                     }
                 }
             } catch (_: Exception) {
-                runIfAlive { showM3uLoginError() }
+                runIfAlive {
+                    if (requestGeneration != catalogGeneration) return@runIfAlive
+                    showM3uLoginError()
+                }
             }
         }
     }
@@ -250,7 +259,7 @@ class MainActivity: Activity() {
         b.status.text = "Login não está funcionando"
         b.heroTitle.text = "Login não está funcionando"
         b.heroMeta.text = "Verifique a lista M3U cadastrada no painel."
-        b.heroPoster.setImageDrawable(null)
+        b.heroPoster.load(null)
     }
 
     private fun switchMode(series: Boolean) {
@@ -295,22 +304,31 @@ class MainActivity: Activity() {
         }
     }
 
-    private fun isAdult(name: String): Boolean {
-        val n = Normalizer.normalize(name.lowercase(Locale.ROOT), Normalizer.Form.NFD)
-            .replace("\\p{Mn}+".toRegex(), "")
-        return listOf("adult", "xxx", "18+", "porno", "erotic").any { n.contains(it) }
-    }
+    private fun isAdult(name: String): Boolean = AdultContent.isAdultName(name)
+    private fun isAdultCategory(category: Category): Boolean = category.adult || isAdult(category.name)
 
     private fun askPin(ok: () -> Unit) {
-        val input = EditText(this).apply { inputType = 2; hint = "PIN" }
-        AlertDialog.Builder(this)
+        if (!canLoad()) return
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Senha"
+        }
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Conteúdo adulto")
             .setView(input)
-            .setPositiveButton("Entrar") { _, _ -> if (input.text.toString() == pin) ok() }
-            .setNegativeButton("Cancelar", null)
-            .show()
+            .setPositiveButton("ENTRAR", null)
+            .setNegativeButton("CANCELAR", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if (input.text.toString() == pin) {
+                    dialog.dismiss()
+                    if (canLoad()) ok()
+                } else input.error = "Senha incorreta"
+            }
+        }
+        dialog.show()
     }
-
 
     private fun localCategories(): List<Category> =
         listOf(
@@ -319,8 +337,8 @@ class MainActivity: Activity() {
         )
 
     private fun orderedCategories(): List<Category> {
-        val normal = serverCategories.filterNot { isAdult(it.name) }
-        val adults = serverCategories.filter { isAdult(it.name) }
+        val normal = serverCategories.filterNot { isAdultCategory(it) }
+        val adults = serverCategories.filter { isAdultCategory(it) }
 
         // Continuar/Favoritos primeiro; XXX/adultos sempre no final.
         return localCategories() + normal + adults
@@ -334,15 +352,19 @@ class MainActivity: Activity() {
 
     private fun loadCategories() {
         if (!canLoad()) return
+        val requestGeneration = ++catalogGeneration
+        val requestSeries = modeSeries
         b.progress.visibility = View.VISIBLE
         b.status.text = if (modeSeries) "Carregando séries..." else "Carregando filmes..."
         posters.submit(emptyList())
+        clearHero()
 
         pool.execute {
             try {
-                val (list, summary) = api.categories(modeSeries)
+                val (list, summary) = api.categories(requestSeries)
 
                 runIfAlive {
+                    if (requestGeneration != catalogGeneration) return@runIfAlive
                     b.progress.visibility = View.GONE
                     serverCategories = list
 
@@ -354,11 +376,11 @@ class MainActivity: Activity() {
                     // abre primeiro uma categoria real do servidor.
                     val firstServer = display.firstOrNull {
                         it.id != continueCategoryId &&
-                        it.id != favoritesCategoryId
+                        it.id != favoritesCategoryId && !isAdultCategory(it)
                     }
 
                     val restoredCategory = display.firstOrNull { it.id == currentCategoryId }
-                    if (restoredCategory != null && !isAdult(restoredCategory.name)) {
+                    if (restoredCategory != null && !isAdultCategory(restoredCategory)) {
                         cats.select(restoredCategory)
                         loadCategory(restoredCategory, focusGrid = false)
                     } else if (firstServer != null) {
@@ -371,6 +393,7 @@ class MainActivity: Activity() {
                 }
             } catch (e: Exception) {
                 runIfAlive {
+                    if (requestGeneration != catalogGeneration) return@runIfAlive
                     val msg = e.message.orEmpty()
                     if (
                         msg.contains("aguardando ativ", true) ||
@@ -391,21 +414,19 @@ class MainActivity: Activity() {
         }
     }
 
-    private fun selectCategory(c: Category) {
-        if (c.id == continueCategoryId || c.id == favoritesCategoryId) {
-            loadCategory(c, focusGrid = true)
+    private fun selectCategory(c: Category) = loadCategory(c, focusGrid = true)
+
+    private fun loadCategory(c: Category, focusGrid: Boolean, adultAuthorized: Boolean = false) {
+        if (!canLoad()) return
+        // Centraliza a senha: clique, seta para baixo e abertura automática seguem a mesma regra.
+        if (isAdultCategory(c) && !adultAuthorized) {
+            askPin { loadCategory(c, focusGrid, adultAuthorized = true) }
             return
         }
-
-        if (isAdult(c.name)) {
-            askPin { loadCategory(c, focusGrid = true) }
-        } else {
-            loadCategory(c, focusGrid = true)
-        }
-    }
-
-    private fun loadCategory(c: Category, focusGrid: Boolean) {
-        if (!canLoad()) return
+        val requestGeneration = ++catalogGeneration
+        val requestSeries = modeSeries
+        posters.submit(emptyList())
+        clearHero()
         cats.select(c)
         currentCategoryId = c.id
         currentCategoryAdult = false
@@ -414,7 +435,7 @@ class MainActivity: Activity() {
 
         if (c.id == continueCategoryId) {
             b.progress.visibility = View.GONE
-            val list = library.continueItems(modeSeries)
+            val list = library.continueItems(modeSeries).filterNot { it.adult || isAdult(it.name) }
             localAdultIds = library.continueAdultIds(modeSeries)
             posters.submit(list)
             b.status.text = "Continuar assistindo • ${list.size} títulos"
@@ -425,14 +446,14 @@ class MainActivity: Activity() {
             } else {
                 b.heroTitle.text = "Continuar assistindo"
                 b.heroMeta.text = "Assista por alguns segundos para aparecer aqui."
-                b.heroPoster.setImageDrawable(null)
+                b.heroPoster.load(null)
             }
             return
         }
 
         if (c.id == favoritesCategoryId) {
             b.progress.visibility = View.GONE
-            val list = library.favoriteItems(modeSeries)
+            val list = library.favoriteItems(modeSeries).filterNot { it.adult || isAdult(it.name) }
             localAdultIds = library.favoriteAdultIds(modeSeries)
             posters.submit(list)
             b.status.text = "★ Favoritos • ${list.size} títulos"
@@ -443,20 +464,23 @@ class MainActivity: Activity() {
             } else {
                 b.heroTitle.text = "★ Favoritos"
                 b.heroMeta.text = "Segure OK em uma capa para adicionar aos favoritos."
-                b.heroPoster.setImageDrawable(null)
+                b.heroPoster.load(null)
             }
             return
         }
 
-        currentCategoryAdult = isAdult(c.name)
+        currentCategoryAdult = isAdultCategory(c)
         b.progress.visibility = View.VISIBLE
         b.status.text = "${c.name} • carregando..."
 
         pool.execute {
             try {
-                val list = api.items(modeSeries, c.id)
+                val list = api.items(requestSeries, c.id)
+                    .map { if (isAdultCategory(c)) it.copy(adult = true) else it }
+                    .filter { isAdultCategory(c) || (!it.adult && !isAdult(it.name)) }
 
                 runIfAlive {
+                    if (requestGeneration != catalogGeneration) return@runIfAlive
                     b.progress.visibility = View.GONE
                     posters.submit(list)
                     b.status.text = "${c.name} • ${list.size} títulos"
@@ -469,7 +493,10 @@ class MainActivity: Activity() {
                     }
                 }
             } catch (_: Exception) {
-                runIfAlive { showM3uLoginError() }
+                runIfAlive {
+                    if (requestGeneration != catalogGeneration) return@runIfAlive
+                    showM3uLoginError()
+                }
             }
         }
     }
@@ -521,7 +548,7 @@ class MainActivity: Activity() {
     private fun clearHero() {
         b.heroTitle.text = if (modeSeries) "Séries" else "Filmes"
         b.heroMeta.text = "Escolha uma categoria"
-        b.heroPoster.setImageDrawable(null)
+        b.heroPoster.load(null)
     }
 
     private fun handlePosterAction(item: PosterItem) {
@@ -556,7 +583,7 @@ class MainActivity: Activity() {
                 val added = library.toggleFavorite(
                     item = item,
                     modeSeries = modeSeries,
-                    adult = currentCategoryAdult || isAdult(item.name)
+                    adult = currentCategoryAdult || item.adult || isAdult(item.name)
                 )
 
                 Toast.makeText(
@@ -571,12 +598,12 @@ class MainActivity: Activity() {
     }
 
     private fun itemNeedsPin(item: PosterItem): Boolean =
-        currentCategoryAdult ||
+        item.adult || currentCategoryAdult ||
         localAdultIds.contains(item.id) ||
         isAdult(item.name)
 
     private fun openItem(item: PosterItem) {
-        if (itemNeedsPin(item)) {
+        if (itemNeedsPin(item) && !currentCategoryAdult) {
             askPin { openItemUnlocked(item) }
         } else {
             openItemUnlocked(item)

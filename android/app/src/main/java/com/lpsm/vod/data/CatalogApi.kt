@@ -109,7 +109,7 @@ class CatalogApi(private val context: Context) {
         val a = root.optJSONArray("categories") ?: JSONArray()
         val list = (0 until a.length()).map { i ->
             val o = a.getJSONObject(i)
-            Category(o.optString("id"), o.optString("name", "Categoria"))
+            Category(o.optString("id"), o.optString("name", "Categoria"), o.optBoolean("adult", false))
         }
         val stats = root.optJSONObject("stats")
         val summary = if (series) {
@@ -138,7 +138,8 @@ class CatalogApi(private val context: Context) {
                 image = o.optString("image").takeIf { it.isNotBlank() },
                 isSeries = o.optBoolean("isSeries", series),
                 url = o.optString("url").takeIf { it.isNotBlank() },
-                headers = headers(o.optJSONObject("headers"))
+                headers = headers(o.optJSONObject("headers")),
+                adult = o.optBoolean("adult", false)
             )
         }
     }
@@ -159,7 +160,8 @@ class CatalogApi(private val context: Context) {
                 image = o.optString("image").takeIf { it.isNotBlank() },
                 isSeries = o.optBoolean("isSeries", series),
                 url = o.optString("url").takeIf { it.isNotBlank() },
-                headers = headers(o.optJSONObject("headers"))
+                headers = headers(o.optJSONObject("headers")),
+                adult = o.optBoolean("adult", false)
             )
         }
     }

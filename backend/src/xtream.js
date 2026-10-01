@@ -1,3 +1,4 @@
+import { adultFlag } from './adult-policy.js';
 import { createHash } from 'node:crypto';
 
 const CATALOG_TTL_MS = 6 * 60 * 60 * 1000;
@@ -158,9 +159,10 @@ function categoriesMap(raw, kind) {
     const item = {
       id,
       name: norm(row?.category_name) || (kind === 'series' ? 'Séries' : 'Filmes'),
+      adult: adultFlag(row?.is_adult),
       providerId: originalId
     };
-    categories.push({ id: item.id, name: item.name });
+    categories.push({ id: item.id, name: item.name, adult: item.adult });
     byId.set(originalId, item);
   }
 
@@ -241,6 +243,7 @@ async function ensureSeries(catalog, force = false) {
       providerId,
       name: seriesName,
       image: bestImage(row, true),
+      adult: adultFlag(row?.is_adult),
       isSeries: true
     };
 
@@ -303,6 +306,7 @@ async function ensureMovies(catalog, force = false) {
       image: bestImage(row, false),
       url: norm(row?.direct_source) || streamUrl(catalog.source, 'movie', providerId, ext),
       headers: { ...catalog.source.headers },
+      adult: adultFlag(row?.is_adult),
       isSeries: false
     };
 
