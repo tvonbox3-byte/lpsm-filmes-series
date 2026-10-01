@@ -33,7 +33,8 @@ export class Store {
       this.data = { ...structuredClone(seed), ...rows[0].data, settings: { ...structuredClone(seed.settings), ...(rows[0].data?.settings || {}) }, pendingDevices: Array.isArray(rows[0].data?.pendingDevices) ? rows[0].data.pendingDevices : [] };
       return;
     }
-    this.data = structuredClone(seed);
+    // Migra os cadastros existentes antes de inicializar o banco persistente.
+    await this.loadLocal();
     await this.supabase('/rest/v1/lpsm_state', {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -43,10 +44,10 @@ export class Store {
 
   async save() {
     if (!this.useSupabase) return this.saveLocal();
-    await this.supabase('/rest/v1/lpsm_state?id=eq.vod', {
-      method: 'PATCH',
-      headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify({ data: this.data, updated_at: new Date().toISOString() })
+    await this.supabase('/rest/v1/lpsm_state', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ id: 'vod', data: this.data, updated_at: new Date().toISOString() })
     });
   }
 
@@ -86,12 +87,20 @@ export class Store {
   }
 
   mutate(fn) {
-    this.queue = this.queue.then(async () => {
-      const result = fn(this.data);
-      await this.save();
-      return result;
+    const operation = this.queue.then(async () => {
+      const previous = structuredClone(this.data);
+      try {
+        const result = await fn(this.data);
+        await this.save();
+        return result;
+      } catch (error) {
+        this.data = previous;
+        throw error;
+      }
     });
-    return this.queue;
+    // Uma falha temporária não pode bloquear todas as gravações seguintes.
+    this.queue = operation.catch(() => {});
+    return operation;
   }
 
   audit(action, detail = '') {

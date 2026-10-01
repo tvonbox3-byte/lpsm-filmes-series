@@ -40,3 +40,10 @@ test('dados já restaurados não são sobrescritos pelo backup', async () => {
   await p.check(state);
   assert.equal(p.count(), 0);
 });
+
+ test('backup anterior recupera banco persistente recém-configurado vazio', async () => {
+  const backup = { data: { settings: { defaultSourceUrl: 'https://example.test/get.php' }, clients: [{ mac: 'AA:BB:CC:DD:EE:FF' }] } };
+  const p = panel(backup, { settings: {}, clients: [], storage: { durable: true } });
+  await p.check({ settings: {}, clients: [], storage: { durable: true } });
+  assert.equal(p.count(), 1);
+});

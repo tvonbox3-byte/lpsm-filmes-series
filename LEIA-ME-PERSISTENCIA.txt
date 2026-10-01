@@ -1,0 +1,23 @@
+CORREÇÃO DO PAINEL — ATIVAÇÕES E ATUALIZAÇÕES
+
+Este pacote altera somente o backend e o painel. Não troque o APK, não desinstale o aplicativo e não limpe seus dados.
+
+ANTES DE ATUALIZAR:
+1. Abra o painel no mesmo navegador e perfil que você usava para ativar os clientes. Se o servidor perdeu os dados, o backup desse navegador pode recuperá-los. Não limpe os dados do navegador.
+2. Baixe um backup JSON pelo botão de backup do painel. Guarde fora do GitHub: ele contém informações privadas.
+3. Para impedir perda nas atualizações, configure armazenamento persistente. Só a cópia no navegador não garante isso.
+
+CONFIGURAÇÃO SUPABASE:
+1. No projeto Supabase, execute backend/setup/persistencia.sql no SQL Editor.
+2. No serviço backend do Render, em Environment, configure SUPABASE_URL e SUPABASE_SECRET_KEY (chave de servidor; a alternativa existente SUPABASE_SERVICE_ROLE_KEY também funciona). Não use chave anon/publishable. Não coloque a chave no app ou no GitHub.
+3. Substitua a pasta backend do repositório pelos arquivos deste pacote e faça o deploy. Preserve ADMIN_USER, ADMIN_PASSWORD e TOKEN_SECRET existentes.
+4. Abra o painel no navegador anterior. Um banco vazio agora também pode recuperar o backup desse navegador. Se necessário, use Restaurar backup e selecione o JSON salvo no passo 2.
+5. Confirme que o painel mostra Persistência online, os mesmos clientes, datas e fontes. Feche e reabra o painel para conferir.
+6. No aparelho BF:D0:2E:97:EB:C0, toque VERIFICAR AGORA.
+
+Se o backup do navegador e o JSON não existirem e o banco antigo estiver vazio, o código não consegue reconstruir os registros apagados. Este pacote não inventa autorizações nem altera vencimentos. Não foi aplicado ao seu painel online nesta sessão.
+
+NOME DO COMMIT:
+LPSM - preserva ativações do painel nas atualizações [teste]
+
+O marcador [teste] evita publicar outro APK pelo fluxo existente. A correção é no servidor. Não é necessário atualizar o APK por causa desta correção.

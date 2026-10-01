@@ -86,8 +86,6 @@ function updateBackupStatus(payload = readBrowserBackup()) {
 }
 
 async function maybeAutoRestore(serverState) {
-  if (serverState?.storage?.durable) return serverState;
-
   const backup = readBrowserBackup();
   if (!backup || !hasConfiguredService(backup.data)) return serverState;
 
