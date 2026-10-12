@@ -3,6 +3,8 @@ package com.lpsm.vod
 import android.app.Activity
 import android.app.AlertDialog
 import android.view.View
+import android.view.KeyEvent
+import com.lpsm.vod.ui.RemoteConfirm
 import androidx.media3.ui.AspectRatioFrameLayout
 import android.os.Bundle
 import android.os.Build
@@ -27,6 +29,8 @@ class PlayerActivity : Activity() {
     private lateinit var b: ActivityPlayerBinding
     private lateinit var library: LocalLibrary
     private var player: ExoPlayer? = null
+    private var revealKey = KeyEvent.KEYCODE_UNKNOWN
+    private val playerConfirm = RemoteConfirm()
 
     private var urlValue = ""
     private var alternateUrl = ""
@@ -58,7 +62,16 @@ class PlayerActivity : Activity() {
         b.screenBtn.setOnClickListener { showScreenOptions() }
         b.playerView.setControllerVisibilityListener(androidx.media3.ui.PlayerView.ControllerVisibilityListener { visibility ->
             b.screenBtn.visibility = visibility
+            if (visibility != View.VISIBLE && !DeviceUi.isTouchDevice(this)) {
+                // A hidden control must not keep the remote's focus.
+                b.playerView.requestFocus()
+            }
         })
+        if (!DeviceUi.isTouchDevice(this)) {
+            b.playerView.isFocusable = true
+            b.playerView.isFocusableInTouchMode = true
+            b.playerView.requestFocus()
+        }
 
         val url = intent.getStringExtra("url")?.trim().orEmpty()
         if (url.isBlank()) {
@@ -201,6 +214,43 @@ class PlayerActivity : Activity() {
             .show()
     }
 
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!::b.isInitialized || DeviceUi.isTouchDevice(this)) return super.dispatchKeyEvent(event)
+        val key = event.keyCode
+        // Consume the release/repeats of the key that opened the controls:
+        // revealing the player must not also click or seek accidentally.
+        if (key == revealKey) {
+            if (event.action == KeyEvent.ACTION_UP) revealKey = KeyEvent.KEYCODE_UNKNOWN
+            return true
+        }
+        val confirm = key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER ||
+            key == KeyEvent.KEYCODE_NUMPAD_ENTER || key == KeyEvent.KEYCODE_BUTTON_A
+        val direction = key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT ||
+            key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
+        if ((confirm || direction) && event.action == KeyEvent.ACTION_DOWN &&
+            !b.playerView.isControllerFullyVisible) {
+            revealKey = key
+            b.playerView.showController()
+            b.playerView.findViewById<View>(androidx.media3.ui.R.id.exo_play_pause)?.requestFocus()
+            return true
+        }
+        if (confirm || direction) {
+            if (event.action == KeyEvent.ACTION_DOWN) b.playerView.showController()
+            val focused = currentFocus
+            if (confirm && focused != null && focused.isShown && focused.isClickable) {
+                return playerConfirm.handle(focused, key, event)
+            }
+            // Route remote events even if an overlay had taken focus.
+            if (focused != b.screenBtn) return b.playerView.dispatchKeyEvent(event)
+        }
+        if (b.playerView.dispatchMediaKeyEvent(event)) {
+            b.playerView.showController()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     private fun mediaItem(url: String): MediaItem = MediaItem.Builder()
         .setUri(url)
         .apply {
@@ -259,6 +309,7 @@ class PlayerActivity : Activity() {
     }
 
     override fun onPause() {
+        revealKey = KeyEvent.KEYCODE_UNKNOWN
         saveProgress()
         if (Build.VERSION.SDK_INT < 24) releasePlayer()
         super.onPause()
